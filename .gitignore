@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.log
+
+venv/
+
+# pyinstaller
+build/
+dist/
+
+.idea/

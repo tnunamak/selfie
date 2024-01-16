@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Data Source Manager Demo</title>
+    <script src="https://unpkg.com/react@17/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@17/umd/react-dom.development.js"></script>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .container { width: 80%; margin: auto; padding: 20px; }
+        .header { padding: 10px 0; }
+        .data-source { margin-bottom: 10px; }
+        button {margin-left: 5px; padding: 5px; border: 1px solid lightgray;}
+        form, div {margin: 2px; padding: 5px; border: 1px solid lightgray;}
+        input, textarea { border: 1px solid black}
+    </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+    class DataSourceManager extends React.Component {
+        constructor(props) {
+            super(props);
+            this.state = {
+                dataSources: [],
+                documents: {},
+                selectedDocuments: new Set(),
+                loading: true,
+                error: null,
+            };
+        }
+
+        componentDidMount() {
+            this.fetchDataSources();
+        }
+
+        fetchDataSources() {
+            fetch('http://localhost:8181/v1/data-sources')
+                .then(response => response.json())
+                .then(dataSources => {
+                    this.setState({ dataSources, loading: false });
+                    dataSources.forEach(dataSource => this.fetchDocuments(dataSource.id));
+                })
+                .catch(error => this.setState({ error: error.message, loading: false }));
+        }
+
+        fetchDocuments(sourceId) {
+            fetch(`http://localhost:8181/v1/documents?source_id=${sourceId}`)
+                .then(response => response.json())
+                .then(documents => {
+                    this.setState(prevState => ({
+                        documents: { ...prevState.documents, [sourceId]: documents }
+                    }));
+                });
+        }
+
+        handleScan(sourceId) {
+            fetch(`http://localhost:8181/v1/data-sources/${sourceId}/scan`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify([sourceId])
+            }).then(() => this.fetchDocuments(sourceId));
+        }
+
+        handleIndex(sourceId) {
+            fetch(`http://localhost:8181/v1/data-sources/${sourceId}/index`, { method: 'POST' })
+                //.then(() => alert('Indexing initiated for data source ' + sourceId));
+        }
+
+        toggleDocumentSelection(docId) {
+            this.setState(prevState => {
+                const selectedDocuments = new Set(prevState.selectedDocuments);
+                if (selectedDocuments.has(docId)) {
+                    selectedDocuments.delete(docId);
+                } else {
+                    selectedDocuments.add(docId);
+                }
+                return { selectedDocuments };
+            });
+        }
+
+        handleIndexSelectedDocuments() {
+            // Implement the logic to index the selected documents
+            //alert('Indexing selected documents: ' + Array.from(this.state.selectedDocuments).join(', '));
+        }
+
+        renderDataSource(dataSource) {
+            const documents = this.state.documents[dataSource.id] || [];
+            return (
+                <div className="data-source" key={dataSource.id}>
+                    <strong>{dataSource.name}</strong>
+                    <button onClick={() => this.handleScan(dataSource.id)}>Scan</button>
+                    <button onClick={() => this.handleIndex(dataSource.id)}>Index</button>
+                    <table className="table-auto w-full mt-2">
+                        <thead>
+                        <tr>
+                            <th>Select</th>
+                            <th>Document ID</th>
+                            <th>Metadata</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {documents.map(doc => (
+                            <tr key={doc.id}>
+                                <td>
+                                    <input
+                                        type="checkbox"
+                                        checked={this.state.selectedDocuments.has(doc.id)}
+                                        onChange={() => this.toggleDocumentSelection(doc.id)}
+                                    />
+                                </td>
+                                <td>{doc.id}</td>
+                                <td>{JSON.stringify(doc.metadata)}</td>
+                            </tr>
+                        ))}
+                        </tbody>
+                    </table>
+                </div>
+            );
+        }
+
+        handleAddDataSource(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const data = {};
+
+            formData.forEach((value, key) => {
+                if (key === 'constructor_args' || key === 'constructor_kwargs' || key === 'load_data_args' || key === 'load_data_kwargs') {
+                    data[key] = value ? JSON.parse(value) : []; // Parse JSON if not empty, otherwise default to an empty array
+                } else {
+                    data[key] = value;
+                }
+            });
+
+            fetch('http://localhost:8181/v1/data-sources', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+                .then(response => response.json())
+                .then(result => {
+                    //alert('Data source added with ID: ' + result.source_id);
+                    this.fetchDataSources(); // Refresh the list of data sources
+                })
+                .catch(error => console.error('Error adding data source:', error));
+        }
+
+        renderAddDataSourceForm() {
+            return (
+                <form onSubmit={this.handleAddDataSource.bind(this)}>
+                    <div>
+                        <label>Name: <input type="text" name="name" required /></label>
+                    </div>
+                    <div>
+                        <label>Loader Module: <input type="text" name="loader_module" required /></label>
+                    </div>
+                    <div>
+                        <label>Constructor Args (JSON): <textarea name="constructor_args" /></label>
+                    </div>
+                    <div>
+                        <label>Constructor Kwargs (JSON): <textarea name="constructor_kwargs" /></label>
+                    </div>
+                    <div>
+                        <label>Load Data Args (JSON): <textarea name="load_data_args" /></label>
+                    </div>
+                    <div>
+                        <label>Load Data Kwargs (JSON): <textarea name="load_data_kwargs" /></label>
+                    </div>
+                    <button type="submit">Add Data Source</button>
+                </form>
+            );
+        }
+
+        render() {
+            const { dataSources, loading, selectedDocuments } = this.state;
+
+            if (loading) {
+                return <div>Loading data sources...</div>;
+            }
+
+            return (
+                <div className="container">
+                    <h1>⚠️ This UI is a dead-end, please refer to <a href={"/docs"}>the docs page here instead.</a></h1>
+                    <div className="header">
+                        <h2>Data Source Manager</h2>
+                    </div>
+                    {this.renderAddDataSourceForm()}
+                    {dataSources.map(dataSource => this.renderDataSource(dataSource))}
+                    <button
+                        onClick={() => this.handleIndexSelectedDocuments()}
+                        disabled={selectedDocuments.size === 0}
+                    >
+                        Index Selected Documents
+                    </button>
+                </div>
+            );
+        }
+    }
+
+    ReactDOM.render(<DataSourceManager />, document.getElementById('root'));
+</script>
+</body>
+</html>

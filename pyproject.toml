@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "selfie"
+version = "0.1.0"
+description = "Data awareness mixin for LLMs"
+authors = ["Vana <services@vana.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.10,<3.13"
+fastapi = "^0.109.0"
+uvicorn = "^0.25.0"
+humanize = "^4.9.0"
+litellm = "^1.17.9"
+txtai = {version = "^6.3.0", extras = ["pipeline-llm"]}
+pyinstaller = "^6.3.0"
+sse-starlette = "^1.8.2"
+llama-index = "^0.9.32"
+html2text = "^2020.1.16"
+peewee = "^3.17.0"
+pypdf = "^3.17.4"
+python-multipart = "^0.0.6"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
