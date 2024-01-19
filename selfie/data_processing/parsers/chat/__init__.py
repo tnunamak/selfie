@@ -76,8 +76,18 @@ class ChatFileParser:
         return text
 
     def parse_file(
+            self,
+            input_file: str,
+            parser_type: str,
+            rename_speakers: Dict[str, str] = None,
+            mask: bool = False,
+   ) -> ShareGPTConversation:
+        with open(input_file, "r", encoding="utf-8") as file:
+            return self.parse_document(''.join(file.readlines()), parser_type, rename_speakers, mask)
+
+    def parse_document(
         self,
-        input_file: str,
+        document: str,
         parser_type: str,
         rename_speakers: Dict[str, str] = None,
         mask: bool = False,
@@ -85,10 +95,7 @@ class ChatFileParser:
         rename_speakers = rename_speakers or {}
         parser_instance = self.select_parser(parser_type)
 
-        with open(input_file, "r", encoding="utf-8") as file:
-            raw_lines = file.readlines()
-
-        parsed_data = parser_instance.parse_chat(raw_lines)
+        parsed_data = parser_instance.parse_chat(document)
 
         # Check if there are any conversations in the parsed data
         if not parsed_data.conversations:

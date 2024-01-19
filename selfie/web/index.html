@@ -29,6 +29,7 @@
                 selectedDocuments: new Set(),
                 loading: true,
                 error: null,
+                isChat: false,
             };
         }
 
@@ -56,6 +57,12 @@
                 });
         }
 
+        handleChatToggleChange = () => {
+            this.setState(prevState => ({
+                isChat: !prevState.isChat
+            }));
+        }
+
         handleScan(sourceId) {
             fetch(`http://localhost:8181/v1/data-sources/${sourceId}/scan`, {
                 method: 'POST',
@@ -67,6 +74,21 @@
         handleIndex(sourceId) {
             fetch(`http://localhost:8181/v1/data-sources/${sourceId}/index`, { method: 'POST' })
                 //.then(() => alert('Indexing initiated for data source ' + sourceId));
+        }
+
+        handleIndexSelectedDocuments = () => {
+            fetch('http://localhost:8181/v1/documents/index', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    document_ids: Array.from(this.state.selectedDocuments).map(i => String(i)),
+                    is_chat: this.state.isChat
+                })
+            })
+                .then(response => response.json())
+                .then(result => {
+                    console.log(result)
+                });
         }
 
         toggleDocumentSelection(docId) {
@@ -188,18 +210,24 @@
                     </div>
                     {this.renderAddDataSourceForm()}
                     {dataSources.map(dataSource => this.renderDataSource(dataSource))}
+                    <label>
+                        <input
+                            type="checkbox"
+                            checked={this.state.isChat}
+                            onChange={this.handleChatToggleChange}
+                        />
+                        Process as chat
+                    </label>
                     <button
-                        onClick={() => this.handleIndexSelectedDocuments()}
                         disabled={selectedDocuments.size === 0}
-                    >
-                        Index Selected Documents
-                    </button>
+                        onClick={this.handleIndexSelectedDocuments}>Index Selected Documents</button>
+
                 </div>
             );
         }
     }
 
-    ReactDOM.render(<DataSourceManager />, document.getElementById('root'));
+    ReactDOM.render(<DataSourceManager/>, document.getElementById('root'));
 </script>
 </body>
 </html>

@@ -28,12 +28,12 @@ class ChatParser:
         text = text.replace('\r', '').replace('\u200e', '')
         return ''.join(char for char in text if char.isprintable())
 
-    def parse_chat(self, raw_data: Any) -> ShareGPTConversation:
+    def parse_chat(self, document: str) -> ShareGPTConversation:
         """
         Parse raw chat data into a structured format.
 
         Args:
-            raw_data (Any): The raw chat data. Could be text or JSON.
+            document (str): The raw chat data. Could be text or JSON.
 
         Returns:
             Dict: A dictionary containing the parsed chat data.
@@ -85,12 +85,12 @@ class TextBasedChatParser(ChatParser):
             lines.append(current_message)
         return lines
 
-    def parse_chat(self, raw_lines: List[str]) -> ShareGPTConversation:
+    def parse_chat(self, document: str) -> ShareGPTConversation:
         """
-        Parse a list of raw text lines into a structured chat format.
+        Parse a document of line-by-line messages into a structured chat format.
 
         Args:
-            raw_lines (List[str]): A list of lines from the chat log.
+            document (str): A list of lines from the chat log.
                                    e.g., ["[2021-01-01] Alice: Hi", "[2021-01-01] Bob: Hello"]
 
         Returns:
@@ -103,8 +103,8 @@ class TextBasedChatParser(ChatParser):
                       ]
                   }
         """
-        raw_lines = [self.remove_non_printable(line) for line in raw_lines]
-        grouped_lines = self.group_lines(raw_lines)
+        lines = [self.remove_non_printable(line) for line in document.splitlines()]
+        grouped_lines = self.group_lines(lines)
         parsed_data = [self.parse_message(bundle) for bundle in grouped_lines]
 
         if len(parsed_data) == 0:
@@ -133,20 +133,8 @@ class TextBasedChatParser(ChatParser):
 
 
 class JsonBasedChatParser(ChatParser):
-    def parse_chat(self, raw_json: List[str]) -> ShareGPTConversation:
-        """
-        Parse a JSON-based chat from a list of raw JSON strings.
-
-        Args:
-            raw_json (List[str]): List of raw JSON strings.
-
-        Returns:
-            Dict: A dictionary containing the parsed chat data.
-                  Structure is defined by subclasses.
-        """
-        complete_json_str = ''.join(raw_json)
-        data = json.loads(complete_json_str)
-        return self.extract_conversations(data)
+    def parse_chat(self, document: str) -> ShareGPTConversation:
+        return self.extract_conversations(json.loads(document))
 
     def extract_conversations(self, data: Any) -> ShareGPTConversation:
         """

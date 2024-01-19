@@ -1,4 +1,6 @@
 import json
+
+from selfie.config import default_local_functionary_model
 from selfie.memory_index.base_scorer import BaseScorer
 from selfie.memory_index.memory_types import Memory
 
@@ -40,7 +42,7 @@ class ImportanceScorer(BaseScorer):
                 from txtai.pipeline import LLM
 
                 llm = LLM(
-                    "meetkai/functionary-7b-v2-GGUF/functionary-7b-v2.q4_0.gguf",
+                    default_local_functionary_model,
                     n_gpu_layers=-1,
                     method="llama.cpp",
                     chat_format="functionary",

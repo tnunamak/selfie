@@ -1,7 +1,7 @@
 import os
 import json
 import litellm
-from fastapi import FastAPI, HTTPException, File, Form, UploadFile
+from fastapi import FastAPI, HTTPException, File, Form, UploadFile, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from litellm import ModelResponse as LitellmCompletionResponse
@@ -16,12 +16,13 @@ from starlette.middleware.cors import CORSMiddleware
 from txtai.pipeline import LLM
 from sse_starlette.sse import EventSourceResponse
 
+from selfie.config import default_local_model
 from selfie.data_processing.parsers.chat import ChatFileParser
 from selfie.data_processing.parsers.chat.chat_file_parsing_helper import (
     get_files_with_configs,
     delete_uploaded_files,
 )
-from selfie.data_source_manager import DataSourceManager
+from selfie.data_manager import DataManager
 from selfie.memory_index.memory_types import Memory
 from selfie.memory_index.__init__ import MemoryIndex
 
@@ -61,8 +62,7 @@ class Tool(BaseModel):
 
 class ChatCompletionRequest(BaseModel):
     method: Literal["litellm", "llama.cpp", "transformers"] = "llama.cpp"
-    # model: str = "TheBloke/Mistral-7B-OpenOrca-GGUF/mistral-7b-openorca.Q4_K_M.gguf"
-    model: str = "TheBloke/dolphin-2.6-mistral-7B-dpo-GGUF/dolphin-2.6-mistral-7b-dpo.Q5_K_M.gguf"
+    model: str = default_local_model
     messages: List[Message]
     frequency_penalty: Optional[float] = 0.0
     logit_bias: Optional[Dict[int, float]] = None
@@ -92,7 +92,7 @@ class ChatCompletionResponse(BaseModel):
 
 class CompletionRequest(BaseModel):
     method: Literal["litellm", "llama.cpp", "transformers"] = "llama.cpp"
-    model: str = "TheBloke/dolphin-2.6-mistral-7B-dpo-GGUF/dolphin-2.6-mistral-7b-dpo.Q5_K_M.gguf"
+    model: str = default_local_model
     prompt: Union[str, List[str]]
     # best_of: Optional[int] = None
     echo: Optional[bool] = None
@@ -163,11 +163,7 @@ async def completion(
     }
 
     if request.method == "llama.cpp":
-        model = (
-            request.model
-            or "TheBloke/dolphin-2.6-mistral-7B-dpo-GGUF/dolphin-2.6-mistral-7b-dpo.Q5_K_M.gguf"
-        )
-        # "TheBloke/Mistral-7B-OpenOrca-GGUF/mistral-7b-openorca.Q4_K_M.gguf"
+        model = request.model or default_local_model
         llm = LLM(
             path=model, method="llama.cpp", n_ctx=8192, n_gpu_layers=-1
         ).generator.llm
@@ -334,7 +330,7 @@ async def load_data(request: DataLoaderRequest):
 
 @app.post("/v1/data-sources")
 async def add_data_source(request: DataLoaderRequest):
-    source_id = DataSourceManager().add_data_source(
+    source_id = DataManager().add_data_source(
         request.name,
         request.loader_module,
         request.constructor_args,
@@ -347,32 +343,65 @@ async def add_data_source(request: DataLoaderRequest):
 
 @app.delete("/v1/data-sources/{source_id}")
 async def delete_data_source(source_id: int):
-    DataSourceManager().remove_data_source(source_id)
+    DataManager().remove_data_source(source_id)
     return {"message": "Data source removed successfully"}
 
 
 @app.post("/v1/data-sources/{source_id}/scan")
 async def scan_data_sources(source_id: int):
-    return DataSourceManager().scan_data_sources([source_id])
+    return DataManager().scan_data_sources([source_id])
 
 
 @app.post("/v1/data-sources/{source_id}/index")
 async def index_data_source(source_id: int):
-    manager = DataSourceManager()
+    manager = DataManager()
     data_source = manager.get_data_source(source_id)
     if isinstance(data_source, dict) and "error" in data_source:
         raise HTTPException(status_code=404, detail=data_source["error"])
     return manager.index_documents(data_source)
 
 
+class IndexDocumentsRequest(BaseModel):
+    is_chat: bool = False
+    document_ids: List[str] = []
+
+
+@app.post("/v1/documents/index")
+async def index_document(request: IndexDocumentsRequest):
+    is_chat = request.is_chat
+    document_ids = request.document_ids
+
+    manager = DataManager()
+    parser = ChatFileParser()
+
+    # TODO: detect this from the document
+    format = 'whatsapp'
+
+    # TODO: figure out what to do about this
+    speaker_aliases = {}
+
+    return [
+        manager.index_document(manager.get_document(document_id),
+                               lambda document: MemoryIndex.map_share_gpt_data(
+                                   parser.parse_document(
+                                       document.text,
+                                       format,
+                                       speaker_aliases
+                                   ).conversations,
+                                   document.source.name
+                               ) if is_chat else None)
+        for document_id in document_ids
+    ]
+
+
 @app.get("/v1/data-sources")
 async def get_data_sources():
-    return DataSourceManager().get_data_sources()
+    return DataManager().get_data_sources()
 
 
 @app.get("/v1/documents")
 async def get_documents(source_id: Optional[int] = None):
-    return DataSourceManager().get_documents(source_id)
+    return DataManager().get_documents(source_id)
 
 
 @app.post("/api/v1/memories/chat-processor")

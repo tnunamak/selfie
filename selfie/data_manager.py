@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 
 from llama_index.node_parser import SentenceSplitter
@@ -9,22 +10,23 @@ from peewee import (
     ForeignKeyField,
     AutoField,
     DoesNotExist,
+    Proxy,
 )
 import json
 import importlib
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 
+from selfie.config import default_storage_root, default_db_name
+from selfie.memory_index import MemoryIndex
 from selfie.memory_index.memory_types import Memory
-from selfie.memory_index.__init__ import MemoryIndex
-
-# Database setup
-db = SqliteDatabase("data_sources.db")
 
 
-# Database Models
+database_proxy = Proxy()
+
+
 class BaseModel(Model):
     class Meta:
-        database = db
+        database = database_proxy
 
 
 class DataSource(BaseModel):
@@ -33,18 +35,27 @@ class DataSource(BaseModel):
     loader_module = CharField()
     config = TextField()
 
+    class Meta:
+        table_name = 'selfie_datasource'
+
 
 class Document(BaseModel):
     id = AutoField()
     source = ForeignKeyField(DataSource, backref="documents")
     metadata = TextField()
+    text = TextField()
+
+    class Meta:
+        table_name = 'selfie_document'
 
 
-db.connect()
-db.create_tables([DataSource, Document])
+class DataManager:
+    def __init__(self, storage_path: str = default_storage_root):
+        self.db = SqliteDatabase(os.path.join(storage_path, default_db_name))
+        database_proxy.initialize(self.db)
+        self.db.connect()
+        self.db.create_tables([DataSource, Document])
 
-
-class DataSourceManager:
     def add_data_source(
         self,
         name: str,
@@ -77,7 +88,7 @@ class DataSourceManager:
             print(documents)
             for doc in documents:
                 document, created = Document.get_or_create(
-                    source=data_source, defaults={"metadata": json.dumps(doc.metadata)}
+                    source=data_source, defaults={"metadata": json.dumps(doc.metadata)}, text=doc.text
                 )
                 changes[document.id] = "Created" if created else "Updated"
         return changes
@@ -110,7 +121,9 @@ class DataSourceManager:
         loader_module = data_source.loader_module
 
         documents = self._fetch_documents(loader_module, json.loads(data_source.config))
-        memories = self._process_documents_to_memories(documents, loader_module)
+        memories = [
+            memory for doc in documents for memory in self._process_document_to_memories(document=doc)
+        ]
 
         memory_stream = MemoryIndex("n/a")
         memory_stream.memorize(memories, extract_importance=False)
@@ -119,16 +132,25 @@ class DataSourceManager:
 
         return {"message": f"{len(documents)} documents indexed successfully"}
 
-    def _process_documents_to_memories(self, documents, source):
+    def index_document(self, document: Document, document_to_memories_fn: Callable[[Document], List[Memory]] = None):
+        print("Indexing document")
+
+        if document_to_memories_fn is None:
+            document_to_memories_fn = self._process_document_to_memories
+
+        MemoryIndex("n/a").memorize(document_to_memories_fn(document), extract_importance=False)
+
+
+    @staticmethod
+    def _process_document_to_memories(document: Document):
         text_parser = SentenceSplitter(chunk_size=1024)
         memories = []
 
-        for doc in documents:
-            text_chunks = text_parser.split_text(doc.text)
-            for text_chunk in text_chunks:
-                timestamp = self._extract_timestamp(doc)
-                memory = Memory(content=text_chunk, source=source, timestamp=timestamp)
-                memories.append(memory)
+        text_chunks = text_parser.split_text(document.text)
+        for text_chunk in text_chunks:
+            timestamp = DataManager._extract_timestamp(document)
+            memory = Memory(content=text_chunk, source=document.source, timestamp=timestamp)
+            memories.append(memory)
 
         return memories
 
@@ -169,9 +191,11 @@ class DataSourceManager:
             {"id": doc.id, "metadata": json.loads(doc.metadata)} for doc in documents
         ]  # Example usage
 
+    def get_document(self, document_id: str):
+        return Document.get_by_id(document_id)
 
 if __name__ == "__main__":
-    manager = DataSourceManager()
+    manager = DataManager()
 
     # # Adding a SimpleWebPageReader data source
     # constructor_args_web = []

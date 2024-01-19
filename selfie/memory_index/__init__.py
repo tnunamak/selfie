@@ -4,6 +4,8 @@ import shutil
 from typing import Optional, List
 
 import humanize
+
+from selfie.config import default_storage_root, default_db_name, default_local_model
 from selfie.data_processing.generators.chat_training_data import (
     ChatTrainingDataGenerator,
 )
@@ -21,11 +23,9 @@ from txtai.pipeline import LLM
 
 logger = logging.getLogger(__name__)
 
-storage_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "memories")
-
 # TODO: make this configurable
 llm = LLM(
-    "TheBloke/Mistral-7B-OpenOrca-GGUF/mistral-7b-openorca.Q4_K_M.gguf",
+    default_local_model,
     method="llama.cpp",
     n_ctx=8192,
     n_gpu_layers=-1,
@@ -33,11 +33,16 @@ llm = LLM(
 
 
 class MemoryIndex:
-    def __init__(self, character_name, use_local_llm=True):
+    def __init__(self, character_name, storage_path: str = default_storage_root, use_local_llm=True):
         logger.info("Initializing MemoryIndex")
+        self.storage_path = os.path.join(storage_path, "index")
+
         self.character_name = character_name
         self.embeddings = Embeddings(
-            path="sentence-transformers/all-MiniLM-L6-v2", content=True
+            path="sentence-transformers/all-MiniLM-L6-v2",
+            # TODO: may not work on Windows
+            # https://docs.sqlalchemy.org/en/20/core/engines.html#sqlite
+            content=f"sqlite:///{os.path.join(storage_path, default_db_name)}"
         )
         self.token_used = {
             "prompt_tokens": 0,
@@ -51,8 +56,8 @@ class MemoryIndex:
         self.recency_scorer = RecencyScorer(score_weight=1)
         self.relevance_scorer = RelevanceScorer(score_weight=1)
 
-        if os.path.exists(os.path.join(storage_path, "embeddings")):
-            self.embeddings.load(storage_path)
+        if os.path.exists(os.path.join(self.storage_path, "embeddings")):
+            self.embeddings.load(self.storage_path)
         else:
             logger.info(
                 "Embeddings file not found, starting with a new embeddings index."
@@ -61,7 +66,7 @@ class MemoryIndex:
     @staticmethod
     def map_share_gpt_data(
         conversation: List[ShareGPTMessage], source: str = "Unknown"
-    ):
+    ) -> List[Memory]:
         chunks = ChatTrainingDataGenerator.group_messages_into_chunks(
             conversation, overlap=1, max_messages=8, max_characters=0
         )
@@ -76,6 +81,7 @@ class MemoryIndex:
                 else f"{msg.value}"
                 for msg in conv
             ).strip()
+
             memory = Memory(
                 content=formatted_conversation,
                 timestamp=conv[0].timestamp,
@@ -161,7 +167,7 @@ class MemoryIndex:
             self.map_memory(memory, extract_importance) for memory in memories
         ]
         self.embeddings.upsert(with_importance)
-        self.embeddings.save(storage_path)
+        self.embeddings.save(self.storage_path)
 
         return with_importance
         # TODO: return memory with ID, if possible
@@ -177,9 +183,9 @@ class MemoryIndex:
         include_summary=True,
         local_llm=True,
     ):
-        if not os.path.exists(storage_path):
+        if not os.path.exists(self.storage_path):
             return {"memories": [], "summary": "No memories found."}
-        self.embeddings.load(storage_path)
+        self.embeddings.load(self.storage_path)
 
         query = f"SELECT score, id, timestamp, text, importance, source FROM txtai WHERE similar(:topic)"
         results = self.embeddings.search(
@@ -232,43 +238,43 @@ class MemoryIndex:
     # TODO: Fix this
     def delete_all(self):
         logger.info("Deleting all memories")
-        if os.path.exists(storage_path):
-            shutil.rmtree(storage_path)
-            logger.info(f"Deleted storage path: {storage_path}")
+        if os.path.exists(self.storage_path):
+            shutil.rmtree(self.storage_path)
+            logger.info(f"Deleted storage path: {self.storage_path}")
             self.embeddings.index(documents=[])
         else:
             logger.info("Storage path not found, nothing to delete.")
 
     def delete_memory(self, memory_id):
         self.embeddings.delete([memory_id])
-        self.embeddings.save(storage_path)
+        self.embeddings.save(self.storage_path)
         # TODO: determine whether anything was actually deleted
 
     def update_memory(self, memory_id, updated_memory, extract_importance=True):
         self.embeddings.upsert(
             [(memory_id, self.map_memory(updated_memory, extract_importance))]
         )
-        self.embeddings.save(storage_path)
+        self.embeddings.save(self.storage_path)
 
     def get_memory_count(self):
-        if not os.path.exists(storage_path):
+        if not os.path.exists(self.storage_path):
             return 0
 
-        self.embeddings.load(storage_path)
+        self.embeddings.load(self.storage_path)
         result = self.embeddings.search("SELECT count(*) FROM txtai")
         return result[0]["count(*)"]
 
     async def get_memory(self, memory_id):
-        if not os.path.exists(storage_path):
+        if not os.path.exists(self.storage_path):
             return None  # TODO: raise exception
-        self.embeddings.load(storage_path)
+        self.embeddings.load(self.storage_path)
         query = f"SELECT id, timestamp, text, importance, source FROM txtai WHERE id = {memory_id}"
         result = self.embeddings.search(query)
         return result[0] if result else None
 
     async def get_memories(self, offset=0, limit=10):
-        if not os.path.exists(storage_path):
+        if not os.path.exists(self.storage_path):
             return []
-        self.embeddings.load(storage_path)
+        self.embeddings.load(self.storage_path)
         query = f"SELECT id, timestamp, text, importance, source FROM txtai ORDER BY timestamp DESC LIMIT {limit} OFFSET {offset}"
         return self.embeddings.search(query)
