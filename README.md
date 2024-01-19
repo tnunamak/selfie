@@ -17,7 +17,8 @@ Selfie personalizes text generation, augmenting both local and hosted Large Lang
 In the future, pre-built executables will be available. For now, you can run selfie with Python:
 
 1. `poetry shell`
-2. `python -m selfie`
+2. `poetry install`
+3. `python -m selfie`
 
 This starts a local web server at http://localhost:8181.
 
