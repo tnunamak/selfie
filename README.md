@@ -18,7 +18,7 @@ In the future, pre-built executables will be available. For now, you can run sel
 
 1. `poetry shell`
 2. `poetry install`
-3. `python -m selfie`
+3. `python -m selfie`. The first time you run this, it will download ~4gb of model weights. While you wait, you can go download your whatsapp or google takeout data for the next step. 
 
 This starts a local web server at http://localhost:8181.
 
@@ -26,7 +26,7 @@ This starts a local web server at http://localhost:8181.
 
 1. Open http://localhost:8181/docs
 2. Find `POST /api/v1/memories/chat-processor`
-3. Upload one or more exported chat log files.
+3. Upload one or more exported chat log files. To get these files, export them from platforms that you use frequently and contain information you want the LLM to know. Exports: [Whatsapp](https://faq.whatsapp.com/1180414079177245/?cms_platform=android) | [Google](https://takeout.google.com/settings/takeout) | [Instagram](https://help.instagram.com/181231772500920)
 4. Copy, paste, and edit the example parser_configs JSON. Include one configuration object in the list for each file you upload.
 
 ![chat-processor.png](selfie/images/chat-processor.png)
