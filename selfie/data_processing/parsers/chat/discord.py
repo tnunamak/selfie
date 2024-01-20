@@ -1,11 +1,32 @@
-from typing import Dict, Any
+from datetime import datetime
+from typing import Dict, Any, List
+
+from pydantic import BaseModel
 
 from selfie.data_processing.parsers.chat.base import JsonBasedChatParser
 from selfie.data_processing.types import ShareGPTConversation
 
 
+class Author(BaseModel):
+    name: str
+
+
+class Message(BaseModel):
+    author: Author
+    content: str
+    timestamp: datetime
+
+
+class DiscordData(BaseModel):
+    messages: List[Message]
+
+
 # TODO: This is a hypothetical parser for Discord data. It's not tested.
 class DiscordParser(JsonBasedChatParser):
+    SUPPORTED_SCHEMAS = [
+        DiscordData
+    ]
+
     def extract_conversations(self, data: Any) -> ShareGPTConversation:
         """
         Extract conversations from parsed Discord JSON data.

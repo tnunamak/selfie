@@ -9,12 +9,12 @@ from selfie.data_processing.types import ShareGPTMessage
 class WhatsAppParser(TextBasedChatParser):
     SUPPORTED_FORMATS = [
         {
-            'regex': r"\[(?P<timestamp>\d{1,2}/\d{1,2}/\d{2,4}, \d{1,2}:\d{2}:\d{2} (AM|PM))\] (?P<from>.+?): (?P<value>.+)",
+            'regex': r"\[(?P<timestamp>\d{1,2}/\d{1,2}/\d{2,4}, \d{1,2}:\d{2}:\d{2}\s(AM|PM))\] (?P<from>.+?): (?P<value>.+)",
             'timestamp_format': "%m/%d/%y, %I:%M:%S %p"
         },
         # Output format from vana-fine-tuning, probably not needed.
         {
-            'regex': r"(?P<timestamp>\d{1,2}/\d{1,2}/\d{2}, \d{1,2}:\d{2} (AM|PM)) - (?P<from>.+?): (?P<value>.+)",
+            'regex': r"(?P<timestamp>\d{1,2}/\d{1,2}/\d{2}, \d{1,2}:\d{2}\s(AM|PM)) - (?P<from>.+?): (?P<value>.+)",
             'timestamp_format': "%m/%d/%y, %I:%M %p"
         },
         # Output format from vana-fine-tuning, probably not needed.

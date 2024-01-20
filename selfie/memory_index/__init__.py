@@ -20,7 +20,6 @@ import logging
 from datetime import timezone
 from txtai.pipeline import LLM
 
-
 logger = logging.getLogger(__name__)
 
 # TODO: make this configurable

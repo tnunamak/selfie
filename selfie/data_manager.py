@@ -85,7 +85,6 @@ class DataManager:
             documents = self._fetch_documents(
                 data_source.loader_module, json.loads(data_source.config)
             )
-            print(documents)
             for doc in documents:
                 document, created = Document.get_or_create(
                     source=data_source, defaults={"metadata": json.dumps(doc.metadata)}, text=doc.text

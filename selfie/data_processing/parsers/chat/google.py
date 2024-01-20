@@ -1,12 +1,31 @@
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
+
+from pydantic import BaseModel, Field, RootModel
 
 from selfie.data_processing.parsers.chat.base import JsonBasedChatParser, TextBasedChatParser
 from selfie.data_processing.types import ShareGPTConversation
 
 
+class Author(BaseModel):
+    name: str
+
+
+class Message(BaseModel):
+    sender_id: str = Field(alias="SenderId")
+    message: str = Field(alias="Message")
+    timestamp: datetime = Field(alias="Timestamp")
+    attachment_count: int = Field(alias="Attachment count")
+
+
+GoogleData = RootModel(root=dict[str, Message])
+
 # Generated with Google Takeout
 class GoogleMessagesParser(JsonBasedChatParser):
+    SUPPORTED_SCHEMAS = [
+        GoogleData
+    ]
+
     def extract_conversations(self, data: Dict[str, Any]) -> ShareGPTConversation:
         """
         Extract conversations from parsed Google Takeout JSON data.

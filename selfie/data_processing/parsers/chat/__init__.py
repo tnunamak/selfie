@@ -10,6 +10,9 @@ from selfie.data_processing.parsers.chat.whatsapp import WhatsAppParser
 from selfie.data_processing.parsers.chat.google import GoogleMessagesParser
 from selfie.data_processing.types import ShareGPTConversation, ShareGPTMessage
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # TODO: Clean this up
 # Check if we are running in a PyInstaller bundle
@@ -57,10 +60,13 @@ class ChatFileParser:
         ]
         self.rewrite_placeholder = rewrite_placeholder
 
-    def select_parser(self, parser_type: str):
-        if parser_type not in self.parser_cache:
-            self.parser_cache[parser_type] = Parser[parser_type.upper()].value()
-        return self.parser_cache[parser_type]
+    def select_parser(self, parser_type: str = None, document: str = None):
+        parsers = [p.value() for p in Parser] if not parser_type else [Parser[parser_type.upper()].value()]
+        matching_parsers = [parser for parser in parsers if parser.can_parse(document)]
+        if len(matching_parsers) != 1:
+            raise ValueError(f"{'Multiple' if matching_parsers else 'No'} parsers match.")
+        logger.info(f"Selected parser: {matching_parsers[0].__class__.__name__}")
+        return matching_parsers[0]
 
     def is_blacklisted(self, line: str) -> bool:
         messages = line.split("\n")
@@ -78,22 +84,26 @@ class ChatFileParser:
     def parse_file(
             self,
             input_file: str,
-            parser_type: str,
+            parser_type: str = None,
             rename_speakers: Dict[str, str] = None,
             mask: bool = False,
    ) -> ShareGPTConversation:
         with open(input_file, "r", encoding="utf-8") as file:
-            return self.parse_document(''.join(file.readlines()), parser_type, rename_speakers, mask)
+            return self.parse_document(''.join(file.readlines()), parser_type, rename_speakers, mask, input_file)
 
     def parse_document(
         self,
         document: str,
-        parser_type: str,
+        parser_type: str = None,
         rename_speakers: Dict[str, str] = None,
         mask: bool = False,
+        document_name: str = None,
     ) -> ShareGPTConversation:
         rename_speakers = rename_speakers or {}
-        parser_instance = self.select_parser(parser_type)
+        try:
+            parser_instance = self.select_parser(parser_type=parser_type, document=document)
+        except ValueError as e:
+            raise ValueError(f"Could not select parser for document {document_name}: {e}")
 
         parsed_data = parser_instance.parse_chat(document)
 

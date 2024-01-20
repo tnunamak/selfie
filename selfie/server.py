@@ -374,9 +374,6 @@ async def index_document(request: IndexDocumentsRequest):
     manager = DataManager()
     parser = ChatFileParser()
 
-    # TODO: detect this from the document
-    format = 'whatsapp'
-
     # TODO: figure out what to do about this
     speaker_aliases = {}
 
@@ -385,8 +382,10 @@ async def index_document(request: IndexDocumentsRequest):
                                lambda document: MemoryIndex.map_share_gpt_data(
                                    parser.parse_document(
                                        document.text,
-                                       format,
-                                       speaker_aliases
+                                       None,
+                                       speaker_aliases,
+                                       False,
+                                       document.id
                                    ).conversations,
                                    document.source.name
                                ) if is_chat else None)

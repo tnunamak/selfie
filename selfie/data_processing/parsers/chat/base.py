@@ -3,13 +3,29 @@ import re
 from typing import List, Dict, Any
 from datetime import timezone
 
+from pydantic import ValidationError
+
 from selfie.data_processing.types import ShareGPTConversation, ShareGPTMessage
 
+import logging
+logger = logging.getLogger(__name__)
 
 class ChatParser:
     def __init__(self, timezone=timezone.utc):
         self.timezone = timezone
 
+    @staticmethod
+    def can_parse(document: str) -> bool:
+        """
+        Check if this parser can parse the given document.
+
+        Args:
+            document (str): The document to check.
+
+        Returns:
+            bool: True if this parser can parse the given document.
+        """
+        return False
 
     """
     The base class for chat parsers. Don't use this class directly; it's meant to be subclassed.
@@ -49,6 +65,9 @@ class ChatParser:
 
 
 class TextBasedChatParser(ChatParser):
+    def can_parse(self, document: str) -> bool:
+        return any(re.match(fmt['regex'], document.splitlines()[0], re.DOTALL) for fmt in self.SUPPORTED_FORMATS)
+
     """
     Parser for chat data that is text-based like WhatsApp.
     """
@@ -133,6 +152,19 @@ class TextBasedChatParser(ChatParser):
 
 
 class JsonBasedChatParser(ChatParser):
+    """
+    Parser for chat data that is JSON-based like Discord exports.
+    """
+    SUPPORTED_SCHEMAS: List[Any] = []
+
+    def can_parse(self, document: str) -> bool:
+        logger.info(f"Trying to parse {document}")
+        try:
+            return any(schema.parse_obj(json.loads(document)) for schema in self.SUPPORTED_SCHEMAS)
+        except (json.JSONDecodeError, ValidationError) as e:
+            logger.warning(f"Failed to parse {document} with {self.__class__.__name__}: {e}")
+            return False
+
     def parse_chat(self, document: str) -> ShareGPTConversation:
         return self.extract_conversations(json.loads(document))
 
