@@ -66,6 +66,7 @@ class ChatParser:
 
 class TextBasedChatParser(ChatParser):
     def can_parse(self, document: str) -> bool:
+        logger.debug(f"Trying to parse {document[:10]} with {self.__class__.__name__}")
         return any(re.match(fmt['regex'], document.splitlines()[0], re.DOTALL) for fmt in self.SUPPORTED_FORMATS)
 
     """
@@ -158,11 +159,11 @@ class JsonBasedChatParser(ChatParser):
     SUPPORTED_SCHEMAS: List[Any] = []
 
     def can_parse(self, document: str) -> bool:
-        logger.info(f"Trying to parse {document}")
+        logger.debug(f"Trying to parse {document[:10]} with {self.__class__.__name__}")
         try:
             return any(schema.parse_obj(json.loads(document)) for schema in self.SUPPORTED_SCHEMAS)
         except (json.JSONDecodeError, ValidationError) as e:
-            logger.warning(f"Failed to parse {document} with {self.__class__.__name__}: {e}")
+            logger.debug(f"Failed to parse {document[:10]} with {self.__class__.__name__}: {e}")
             return False
 
     def parse_chat(self, document: str) -> ShareGPTConversation:

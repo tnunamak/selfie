@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 from llama_index.node_parser import SentenceSplitter
 from peewee import (
@@ -111,7 +111,7 @@ class DataManager:
                 value = getattr(value, key, None)
         return value
 
-    def index_documents(self, data_source: DataSource):
+    async def index_documents(self, data_source: DataSource):
         print("Indexing documents")
 
         # Ensure that the data source is in the database
@@ -125,20 +125,19 @@ class DataManager:
         ]
 
         memory_stream = MemoryIndex("n/a")
-        memory_stream.memorize(memories, extract_importance=False)
+        await memory_stream.memorize(memories, extract_importance=False)
 
         # TODO: record the last time this data source was indexed
 
         return {"message": f"{len(documents)} documents indexed successfully"}
 
-    def index_document(self, document: Document, document_to_memories_fn: Callable[[Document], List[Memory]] = None):
+    async def index_document(self, document: Document, document_to_memories_fn: Callable[[Document], List[Memory]] = None):
         print("Indexing document")
 
         if document_to_memories_fn is None:
             document_to_memories_fn = self._process_document_to_memories
 
-        MemoryIndex("n/a").memorize(document_to_memories_fn(document), extract_importance=False)
-
+        indexed_memories = await MemoryIndex("n/a").memorize(document_to_memories_fn(document), extract_importance=False)
 
     @staticmethod
     def _process_document_to_memories(document: Document):
@@ -148,7 +147,12 @@ class DataManager:
         text_chunks = text_parser.split_text(document.text)
         for text_chunk in text_chunks:
             timestamp = DataManager._extract_timestamp(document)
-            memory = Memory(content=text_chunk, source=document.source, timestamp=timestamp)
+            memory = Memory(
+                content=text_chunk,
+                source=document.source,
+                timestamp=timestamp,
+                source_document_id=document.id,
+            )
             memories.append(memory)
 
         return memories

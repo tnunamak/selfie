@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime, timezone
 import os
 import shutil
 from typing import Optional, List
@@ -17,24 +17,18 @@ from selfie.memory_index.relevance_scorer import RelevanceScorer
 from txtai.embeddings import Embeddings
 import logging
 
-from datetime import timezone
 from txtai.pipeline import LLM
 
 logger = logging.getLogger(__name__)
 
-# TODO: make this configurable
-llm = LLM(
-    default_local_model,
-    method="llama.cpp",
-    n_ctx=8192,
-    n_gpu_layers=-1,
-)
+default_importance = 0.3
 
 
 class MemoryIndex:
-    def __init__(self, character_name, storage_path: str = default_storage_root, use_local_llm=True):
+    def __init__(self, character_name, storage_path: str = default_storage_root, use_local_llm=True, completion_fn=None):
         logger.info("Initializing MemoryIndex")
         self.storage_path = os.path.join(storage_path, "index")
+        self.completion_fn = completion_fn
 
         self.character_name = character_name
         self.embeddings = Embeddings(
@@ -64,7 +58,7 @@ class MemoryIndex:
 
     @staticmethod
     def map_share_gpt_data(
-        conversation: List[ShareGPTMessage], source: str = "Unknown"
+        conversation: List[ShareGPTMessage], source: str = "Unknown", source_document_id: int = None
     ) -> List[Memory]:
         chunks = ChatTrainingDataGenerator.group_messages_into_chunks(
             conversation, overlap=1, max_messages=8, max_characters=0
@@ -86,27 +80,32 @@ class MemoryIndex:
                 timestamp=conv[0].timestamp,
                 source=source,
             )
+
+            if source_document_id:
+                memory.source_document_id = source_document_id
+
             memories.append(memory)
         return memories
 
     @staticmethod
     def _calculate_retrieval_score(
-        importance_score,
         recency_score,
         relevance_score,
+        importance_score=None,
         importance_weight=1,
         recency_weight=1,
         relevance_weight=1,
     ):
+        if importance_score is None:
+            importance_score = default_importance
         return (
             (importance_score * importance_weight)
             + (recency_score * recency_weight)
             + (relevance_score * relevance_weight)
-        ) / 3
+        ) / (importance_weight + recency_weight + relevance_weight)
 
-    @staticmethod
     async def _summarize_memories(
-        character_name: str, memories: List[Memory], question, model
+        self, character_name: str, memories: List[Memory], question, model
     ):
         logger.info(f"Summarizing {len(memories)} memories")
 
@@ -116,7 +115,7 @@ class MemoryIndex:
             return None
         memory_summary = "\n\n".join(
             [
-                f"{humanize.naturaltime(datetime.datetime.now(timezone.utc) - memory.timestamp)}\n{memory.content}"
+                f"{humanize.naturaltime(datetime.now(timezone.utc) - memory.timestamp)}\n{memory.content}"
                 for memory in memories
             ]
         )
@@ -131,8 +130,7 @@ class MemoryIndex:
 
         # TODO: truncate the prompt to fit the context window
         if model == "local":
-            print(len(prompt))
-            return llm(prompt)
+            return await self.completion_fn(prompt)
         else:
             from litellm import completion
 
@@ -144,24 +142,31 @@ class MemoryIndex:
             return openai_response.choices[0].message.content
 
     def map_memory(self, memory: Memory, extract_importance=True):
-        default_importance = 0.3
         return {
+            **({"id": memory.id} if memory.id is not None else {}),
             "timestamp": memory.timestamp.replace(tzinfo=timezone.utc).isoformat(),
             "text": memory.content,
             "source": memory.source,
             **(
                 {
                     "importance": memory.importance
-                    if memory.importance is not None
+                    if memory.importance is not None  # Only calculate importance if it's not already set
                     else self.importance_scorer.calculate_score(memory)
-                    if extract_importance
-                    else default_importance
-                }
+
+                } if extract_importance else {}
             ),
+            "created_timestamp": memory.created_timestamp.replace(tzinfo=timezone.utc).isoformat(),
+            "updated_timestamp": memory.updated_timestamp.replace(tzinfo=timezone.utc).isoformat(),
+            **({"source_document_id": memory.source_document_id} if memory.source_document_id is not None else {})
         }
 
-    def memorize(self, memories: List[Memory], extract_importance=True):
+    async def memorize(self, memories: List[Memory], extract_importance=True, upsert=False):
         logger.info(f"Memorizing {len(memories)} memories")
+
+        memories = [
+            await self.find_existing_memory(memory) or memory for memory in memories
+        ] if upsert else memories
+
         with_importance = [
             self.map_memory(memory, extract_importance) for memory in memories
         ]
@@ -175,18 +180,22 @@ class MemoryIndex:
         self,
         topic,
         character_name: Optional[str] = None,
-        limit=3,
-        importance_weight=1,
+        limit=5,
+        importance_weight=0,
         recency_weight=1,
         relevance_weight=1,
         include_summary=True,
         local_llm=True,
+        min_score=0.4,
     ):
+        if min_score is None:
+            min_score = 0.4
+
         if not os.path.exists(self.storage_path):
             return {"memories": [], "summary": "No memories found."}
         self.embeddings.load(self.storage_path)
 
-        query = f"SELECT score, id, timestamp, text, importance, source FROM txtai WHERE similar(:topic)"
+        query = f"SELECT score, id, timestamp, text, importance, source, updated_timestamp, source_document_id FROM txtai WHERE similar(:topic)"
         results = self.embeddings.search(
             query, limit=limit, parameters={"topic": topic}
         )
@@ -197,6 +206,8 @@ class MemoryIndex:
                 timestamp=result["timestamp"],
                 importance=result["importance"],
                 source=result["source"],
+                updated_timestamp=result["updated_timestamp"],
+                source_document_id=result["source_document_id"],
             )
             relevance_score = self.relevance_scorer.calculate_score(
                 memory, result["score"]
@@ -204,9 +215,9 @@ class MemoryIndex:
             recency_score = self.recency_scorer.calculate_score(memory)
             importance_score = memory.importance
             retrieval_score = self._calculate_retrieval_score(
-                importance_score,
                 recency_score,
                 relevance_score,
+                importance_score,
                 importance_weight,
                 recency_weight,
                 relevance_weight,
@@ -220,6 +231,10 @@ class MemoryIndex:
                 )
             )
 
+        memories_list = [m for m in memories_list if m.score > min_score]
+        if len(memories_list) == 0:
+            return {"memories": [], "summary": "No memories found.", "mean_score": 0}
+
         memories_list.sort(key=lambda x: x.score, reverse=True)
         short_memories_list = memories_list[:limit]
         summary = (
@@ -232,7 +247,7 @@ class MemoryIndex:
             if include_summary
             else None
         )
-        return {"memories": short_memories_list, "summary": summary}
+        return {"memories": short_memories_list, "summary": summary, "mean_score": sum([m.score for m in short_memories_list]) / len(short_memories_list)}
 
     # TODO: Fix this
     def delete_all(self):
@@ -267,13 +282,40 @@ class MemoryIndex:
         if not os.path.exists(self.storage_path):
             return None  # TODO: raise exception
         self.embeddings.load(self.storage_path)
-        query = f"SELECT id, timestamp, text, importance, source FROM txtai WHERE id = {memory_id}"
+        query = f"SELECT id, timestamp, text, importance, source, updated_timestamp, source_document_id source FROM txtai WHERE id = {memory_id}"
         result = self.embeddings.search(query)
         return result[0] if result else None
+
+    async def find_existing_memory(self, memory: Memory):
+        if not os.path.exists(self.storage_path):
+            return None
+        self.embeddings.load(self.storage_path)
+        query = f"SELECT id, timestamp, text, importance, source, created_timestamp, updated_timestamp, source_document_id FROM txtai WHERE text = :text AND timestamp = :timestamp AND source = :source AND source_document_id = :source_document_id"
+        result = self.embeddings.search(
+            query,
+            parameters={
+                "text": memory.content,
+                "timestamp": memory.timestamp.isoformat(),
+                "source": memory.source,
+                "source_document_id": memory.source_document_id,
+            },
+        )
+        if len(result) > 1:
+            logger.warning(f"Found {len(result)} memories matching {memory})")
+        if len(result) > 0:
+            logger.debug(f"Found an existing memory matching")
+
+            # TODO: This is kinda horrible
+            result[0]['content'] = result[0]['text']
+            del result[0]['text']
+            result[0]['id'] = int(result[0]['id'])
+            result[0]['source_document_id'] = int(result[0]['source_document_id'])
+
+        return Memory(**result[0]) if result else None
 
     async def get_memories(self, offset=0, limit=10):
         if not os.path.exists(self.storage_path):
             return []
         self.embeddings.load(self.storage_path)
-        query = f"SELECT id, timestamp, text, importance, source FROM txtai ORDER BY timestamp DESC LIMIT {limit} OFFSET {offset}"
+        query = f"SELECT id, timestamp, text, importance, source, updated_timestamp, source_document_id FROM txtai ORDER BY timestamp DESC LIMIT {limit} OFFSET {offset}"
         return self.embeddings.search(query)

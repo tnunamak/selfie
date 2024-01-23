@@ -4,19 +4,21 @@ import litellm
 from fastapi import FastAPI, HTTPException, File, Form, UploadFile, Request
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
+from huggingface_hub import scan_cache_dir
 from litellm import ModelResponse as LitellmCompletionResponse
+from litellm.utils import _generate_id
 from llama_cpp import (
     CreateCompletionResponse as LlamaCppCompletionResponse,
     CreateChatCompletionResponse as LlamaCppChatCompletionResponse,
 )
 from pydantic import BaseModel
-from typing import List, Optional, Dict, Any, Union, Literal
+from typing import List, Optional, Dict, Any, Union, Literal, ClassVar
 
 from starlette.middleware.cors import CORSMiddleware
-from txtai.pipeline import LLM
+from txtai.pipeline import LLM, GenerationFactory
 from sse_starlette.sse import EventSourceResponse
 
-from selfie.config import default_local_model
+from selfie.config import default_local_model, default_local_gpu_model
 from selfie.data_processing.parsers.chat import ChatFileParser
 from selfie.data_processing.parsers.chat.chat_file_parsing_helper import (
     get_files_with_configs,
@@ -25,6 +27,9 @@ from selfie.data_processing.parsers.chat.chat_file_parsing_helper import (
 from selfie.data_manager import DataManager
 from selfie.memory_index.memory_types import Memory
 from selfie.memory_index.__init__ import MemoryIndex
+
+import logging
+logger = logging.getLogger(__name__)
 
 litellm.drop_params = True
 
@@ -59,11 +64,9 @@ class Tool(BaseModel):
     type: str
     function: Optional[FunctionCall] = None
 
-
-class ChatCompletionRequest(BaseModel):
-    method: Literal["litellm", "llama.cpp", "transformers"] = "llama.cpp"
-    model: str = default_local_model
-    messages: List[Message]
+class BaseCompletionRequest(BaseModel):
+    method: Optional[Literal["litellm", "llama.cpp", "transformers"]] = None
+    model: Optional[str] = None
     frequency_penalty: Optional[float] = 0.0
     logit_bias: Optional[Dict[int, float]] = None
     # logprobs: Optional[bool] = False
@@ -79,36 +82,38 @@ class ChatCompletionRequest(BaseModel):
     tools: Optional[List[Tool]] = None
     tool_choice: Optional[Union[str, Dict[str, Any]]] = None
     # user: Optional[str] = None
+    api_base: Optional[str] = None
+    api_key: Optional[str] = None
+
+    custom_params: ClassVar[List[str]] = ["method", "api_base", "api_key"]
+
+    def openai_params(self):
+        return {
+            k: v
+            for k, v in self.model_dump().items()
+            if k not in BaseCompletionRequest.custom_params and v is not None
+        }
+
+class ChatCompletionRequest(BaseCompletionRequest):
+    messages: List[Message]
+
+
+class CompletionRequest(BaseCompletionRequest):
+    prompt: Union[str, List[str]]
+    # best_of: Optional[int] = None
+    echo: Optional[bool] = None
+    logprobs: Optional[int] = None
+    # n: Optional[int] = None
+    suffix: Optional[str] = None
 
 
 class ChatCompletionResponse(BaseModel):
     id: str
     object: str = "chat.completion"
     created: int
-    model: str
+    model: Optional[str]
     choices: List[Dict[str, Any]]
     usage: Dict[str, int]
-
-
-class CompletionRequest(BaseModel):
-    method: Literal["litellm", "llama.cpp", "transformers"] = "llama.cpp"
-    model: str = default_local_model
-    prompt: Union[str, List[str]]
-    # best_of: Optional[int] = None
-    echo: Optional[bool] = None
-    frequency_penalty: Optional[float] = None
-    logit_bias: Optional[Dict[int, float]] = None
-    logprobs: Optional[int] = None
-    max_tokens: Optional[int] = None
-    # n: Optional[int] = None
-    presence_penalty: Optional[float] = None
-    seed: Optional[int] = None
-    stop: Optional[Union[str, List[str]]] = None
-    stream: Optional[bool] = None
-    suffix: Optional[str] = None
-    temperature: Optional[float] = None
-    top_p: Optional[float] = None
-    # user: Optional[str] = None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -119,13 +124,68 @@ async def serve_index_html():
         return HTMLResponse(content=f.read())
 
 
+@app.get("/v1/memory/v1/models")
+@app.get("/v1/models")
+async def get_models():
+    hf_cache_info = scan_cache_dir()
+    models = []
+
+    for repo in hf_cache_info.repos:
+        for revision in repo.revisions:
+            gguf_files = [file for file in revision.files if file.file_name.endswith('.gguf')]
+            if gguf_files:
+                for gguf_file in gguf_files:
+                    models.append({
+                        "id": f"{repo.repo_id}/{gguf_file.file_name}",
+                        "object": "model",
+                        "created": gguf_file.blob_last_modified,
+                        "owned_by": "user"
+                    })
+            else:
+                models.append({
+                    "id": repo.repo_id,
+                    "object": "model",
+                    "created": min(file.last_modified for file in repo.revisions),
+                    "owned_by": "user"
+                })
+
+    return {
+        "object": "list",
+        "data": models
+    }
+
+
 async def completion(
     request: CompletionRequest | ChatCompletionRequest, use_memory: bool = False
 ) -> LlamaCppCompletionResponse | LlamaCppChatCompletionResponse | LitellmCompletionResponse | EventSourceResponse:
     chat_mode = isinstance(request, ChatCompletionRequest)
 
+    if request.method is None and request.model:
+        method = GenerationFactory.method(request.model, request.method)
+    elif request.method is None:
+        method = 'llama.cpp'
+    else:
+        method = request.method
+
     if use_memory:
-        memory_stream = MemoryIndex("n/a")
+        async def simple_completion(prompt):
+            simple_result = await completion(CompletionRequest(
+                api_base=request.api_base,
+                api_key=request.api_key,
+                method=method,
+                model=request.model,
+                prompt=prompt,
+                max_tokens=512,
+            ), use_memory=False)
+
+            # Depending on the method used, could be simple_result['choices'][0]['text'] (simple_result as a dict)
+            # or simple_result.choices[0].message.content
+            if isinstance(simple_result, dict):
+                return simple_result["choices"][0]["text"]
+            else:
+                return simple_result.choices[0].message.content
+
+        memory_stream = MemoryIndex("n/a", completion_fn=simple_completion)
         if chat_mode:
             last_user_message = next(
                 (
@@ -136,36 +196,29 @@ async def completion(
                 None,
             )
             memories = await memory_stream.recall(last_user_message.content)
-            last_message = request.messages[-1]
-            # if last_message.role == "system":
-            #     last_message.content = f"{last_message.content}\n[Recalled from memory: {memories['summary']}]"
-            # else:
-            #     request.messages.append(Message(role="system", content=f"[Recalled from memory: {memories['summary']}]"))
-            request.messages.append(
-                Message(
-                    role="assistant", content=f"[Thinks to self: {memories['summary']}]"
-                )
-            )
-            print(request.messages)
+            # Find the first system message and insert the memory summary at the end. If there isn't one,
+            # insert a new system message at the beginning.
+            system_message = f"[System note: The AI recalls that: {memories['summary']}]"
+            system_msgs = [m for m in request.messages if m.role == "system"]
+            if system_msgs:
+                system_msgs[0].content += f"\n\n{system_message}"
+            else:
+                request.messages.insert(0, Message(role="system", content=system_message))
         else:
             memories = await memory_stream.recall(request.prompt)
-            memory_string = f"[Recalled from memory: {memories['summary']}]"
-            new_prompt = f"{memory_string}\n\n{request.prompt}"
-            print(new_prompt)
-            request.prompt = new_prompt
+            request.prompt = f"[Recalled from memory: {memories['summary']}]\n\n{request.prompt}"
 
-    # TODO: support transformers method (txtai)
-    custom_params = ["method"]
-    open_ai_params = {
-        k: v
-        for k, v in request.model_dump().items()
-        if k not in custom_params and v is not None
-    }
+    open_ai_params = request.openai_params()
 
-    if request.method == "llama.cpp":
+    if method == "llama.cpp":
         model = request.model or default_local_model
+        logger.info(f"Using model {model}")
         llm = LLM(
-            path=model, method="llama.cpp", n_ctx=8192, n_gpu_layers=-1
+            # verbose=True,
+            path=model,
+            method="llama.cpp",
+            n_ctx=8192,
+            n_gpu_layers=-1,
         ).generator.llm
 
         completion_fn = (
@@ -176,19 +229,110 @@ async def completion(
 
         if request.stream:
             return EventSourceResponse({"data": json.dumps(item)} for item in result)
-    elif request.method == "transformers":
-        # TODO: Make error response OpenAI-compatible
-        raise HTTPException(status_code=501, detail="Method not yet implemented")
-    elif request.method == "litellm":
+    elif method == "litellm":
+        logger.info(f"Using model {request.model or 'litellm default'}")
+        if not chat_mode:
+            open_ai_params["messages"] = [{"content": open_ai_params["prompt"], "role": "user"}]
+            del open_ai_params["prompt"]
+
+        if "temperature" in open_ai_params and open_ai_params["temperature"] == 0.0:
+            open_ai_params["temperature"] = 0.0000001
+
+        # open_ai_params["instruction_template"] = "Mistral" # TODO: Investigate why the Mistral template isn't auto-selected
+
         result = litellm.completion(**open_ai_params)
         if request.stream:
             return EventSourceResponse(
                 {"data": json.dumps(item.model_dump())} for item in result
             )
+    elif method == "transformers":  # TODO: Check GPU support
+        # # TODO: TL;DR this seems like way too much. Look for another library.
+        # model = request.model or default_local_gpu_model
+        # logger.info(f"Using model {model}")
+        #
+        # import torch
+        # import transformers
+        #
+        # device = "cuda:0" if torch.cuda.is_available() else "cpu"
+        #
+        # from transformers import TextStreamer
+        #
+        # llm = LLM(
+        #     path=model,
+        #     method="transformers",
+        #     device_map="auto",
+        #     **({
+        #         'quantization_config': transformers.GPTQConfig(bits=4, use_exllama=False)
+        #     } if device is "cpu" else {})
+        # )
+        #
+        # tokenizer = llm.generator.llm.pipeline.tokenizer
+        #
+        # # TODO: needs work
+        # def transform_openai_params(open_ai_params: Dict[str, Any]) -> Dict[str, Any]:
+        #     filtered_params = {key: value for key, value in open_ai_params.items()
+        #                        if key not in
+        #                        ['model', 'prompt', 'stream', 'logit_bias', 'max_tokens']} # TODO not ideal
+        #     if chat_mode:
+        #         filtered_params['text'] = tokenizer.apply_chat_template(request.messages, tokenize=False, add_generation_prompt=True)
+        #         del filtered_params['messages']
+        #     else:
+        #         filtered_params['text'] = request.prompt
+        #
+        #     del filtered_params['frequency_penalty']
+        #     del filtered_params['presence_penalty']
+        #
+        #     if request.stream:
+        #         filtered_params['streamer'] = TextStreamer(tokenizer, skip_prompt=True)
+        #
+        #     return filtered_params
+        #
+        # id = _generate_id()
+        # created = round(datetime.now().timestamp())
+        # transformed_openai_params = transform_openai_params(open_ai_params)
+        #
+        # def make_response(text: str, finish_reason: str = None):
+        #     prompt_tokens = tokenizer(transformed_openai_params['text'], return_tensors='pt')['input_ids'].size(1)
+        #     completion_tokens = tokenizer(text, return_tensors='pt')['input_ids'].size(1)
+        #
+        #     return {
+        #         'id': id,
+        #         'object': 'chat.completion' if chat_mode else 'text_completion',
+        #         'model': model,
+        #         'created': created,
+        #         'choices': [
+        #             {
+        #                 **({
+        #                        "message": {
+        #                            "content": text,
+        #                            "role": "assistant"
+        #                        }
+        #                    } if chat_mode else {
+        #                     "text": text,
+        #                 }),
+        #                 "index": 0,
+        #                 "logprobs": None,
+        #                 "finish_reason": finish_reason
+        #             }
+        #         ],
+        #         'usage': {'prompt_tokens': prompt_tokens, 'completion_tokens': completion_tokens, 'total_tokens': prompt_tokens + completion_tokens}
+        #     }
+        #
+        # generation = llm(**transformed_openai_params)
+        # # print(f'Generation: {generation}')
+        # if request.stream:
+        #     return EventSourceResponse(
+        #         (*({"data": json.dumps(make_response(item))} for item in generation),
+        #           {"data": json.dumps(make_response("", finish_reason="stop"))})
+        #     )
+        #
+        # result = make_response(generation, "stop")
+
+        # # TODO: Make error response OpenAI-compatible
+        raise HTTPException(status_code=501, detail="Method not yet implemented")
     else:
         raise HTTPException(status_code=400, detail="Invalid method")
 
-    # TODO: return StreamingResponse here instead
     return result
 
 
@@ -207,19 +351,18 @@ async def create_completion(
     return await completion(request)
 
 
-@app.post("/v1/memory/chat/completions")
-async def create_completion(
+@app.post("/v1/memory/v1/chat/completions")
+async def create_memory_chat_completion(
     request: ChatCompletionRequest,
-) -> LlamaCppCompletionResponse | LitellmCompletionResponse:
+) -> LlamaCppChatCompletionResponse | LitellmCompletionResponse:
     return await completion(request, use_memory=True)
 
 
-@app.post("/v1/memory/completions")
-async def create_completion(
+@app.post("/v1/memory/v1/completions")
+async def create_memory_completion(
     request: CompletionRequest,
 ) -> LlamaCppCompletionResponse | LitellmCompletionResponse:
     return await completion(request, use_memory=True)
-
 
 @app.get("/v1/memories")
 async def get_memories(offset: int = 0, limit: int = 10):
@@ -227,18 +370,19 @@ async def get_memories(offset: int = 0, limit: int = 10):
 
 
 @app.get("/v1/memories/summary")
-async def get_memory_summary(topic: str):
+async def get_memory_summary(topic: str, limit: Optional[int] = 5, min_score: Optional[float] = None):
+    result = await MemoryIndex("n/a").recall(topic, limit=limit, min_score=min_score)
     return {
-        "summary": (
-            await MemoryIndex("n/a").recall(topic, limit=3, include_summary=True)
-        )["summary"]
+        "summary": result["summary"],
+        "score": result["mean_score"],
+        "memories": result["memories"],
     }
 
 
 @app.post("/v1/memories")
 async def create_memory(memory: Memory):
     memory_stream = MemoryIndex("n/a")
-    return memory_stream.memorize([memory])[0]
+    return (await memory_stream.memorize([memory]))[0]
 
 
 @app.get("/v1/memories/{memory_id}")
@@ -267,7 +411,7 @@ async def delete_memories():
 
 
 from llama_index.node_parser.text import SentenceSplitter
-from datetime import datetime
+from datetime import datetime, timezone
 import importlib
 
 
@@ -325,7 +469,7 @@ async def load_data(request: DataLoaderRequest):
 
         memories.append(memory)
 
-    return {"memories": MemoryIndex("n/a").memorize(memories, extract_importance=False)}
+    return {"memories": await MemoryIndex("n/a").memorize(memories, extract_importance=False)}
 
 
 @app.post("/v1/data-sources")
@@ -358,7 +502,7 @@ async def index_data_source(source_id: int):
     data_source = manager.get_data_source(source_id)
     if isinstance(data_source, dict) and "error" in data_source:
         raise HTTPException(status_code=404, detail=data_source["error"])
-    return manager.index_documents(data_source)
+    return await manager.index_documents(data_source)
 
 
 class IndexDocumentsRequest(BaseModel):
@@ -378,7 +522,7 @@ async def index_document(request: IndexDocumentsRequest):
     speaker_aliases = {}
 
     return [
-        manager.index_document(manager.get_document(document_id),
+        await manager.index_document(manager.get_document(document_id),
                                lambda document: MemoryIndex.map_share_gpt_data(
                                    parser.parse_document(
                                        document.text,
@@ -387,7 +531,8 @@ async def index_document(request: IndexDocumentsRequest):
                                        False,
                                        document.id
                                    ).conversations,
-                                   document.source.name
+                                   document.source.name,
+                                   document.id
                                ) if is_chat else None)
         for document_id in document_ids
     ]
@@ -403,7 +548,7 @@ async def get_documents(source_id: Optional[int] = None):
     return DataManager().get_documents(source_id)
 
 
-@app.post("/api/v1/memories/chat-processor")
+@app.post("/v1/memories/chat-processor")
 async def process_chat_files(
     character_name: str,
     files: List[UploadFile] = File(..., description="Upload chat files here."),
@@ -433,7 +578,7 @@ async def process_chat_files(
             file_data.conversations, file_with_settings["file"].split("/")[-1]
         )
 
-        file_memories = memory_index.memorize(mapped_memories, extract_importance)
+        file_memories = await memory_index.memorize(mapped_memories, extract_importance)
         new_memory_count += len(file_memories)
         memories.extend(file_memories)
 
