@@ -4,17 +4,17 @@ from selfie.augmentation.completion import completion as _completion
 
 
 async def completion(
-        request: CompletionRequest | ChatCompletionRequest, use_memory: bool = False
+        request: CompletionRequest | ChatCompletionRequest, do_augmentation: bool = False
 ) -> SelfieCompletionResponse:
-    if use_memory:
-        async def memory_completion(memory_prompt):
+    if do_augmentation:
+        async def augmentation_completion(prompt):
             simple_result = await completion(ChatCompletionRequest(
                 api_base=request.api_base,
                 api_key=request.api_key,
                 method=request.method,
                 model=request.model,
                 # TODO: Add a system message?
-                messages=[{"content": memory_prompt, "role": "user"}],
+                messages=[{"content": prompt, "role": "user"}],
                 max_tokens=512,
             ))
 
@@ -24,6 +24,6 @@ async def completion(
             else:
                 return simple_result.choices[0].message.content
 
-        await augment(request, memory_completion)
+        await augment(request, augmentation_completion)
 
     return await _completion(request)

@@ -1,8 +1,8 @@
 import json
 
 from selfie.config import default_local_functionary_model
-from selfie.memory_index.base_scorer import BaseScorer
-from selfie.memory_index.memory_types import Memory
+from selfie.data_index.base_scorer import BaseScorer
+from selfie.data_index.document_types import Document
 
 
 class ImportanceScorer(BaseScorer):
@@ -10,21 +10,21 @@ class ImportanceScorer(BaseScorer):
         super().__init__(score_weight)
         self.use_local_llm = use_local_llm
 
-    def calculate_raw_score(self, memory: Memory):
+    def calculate_raw_score(self, document: Document):
         """
-        Calculate the raw importance score for a memory using OpenAI's API.
+        Calculate the raw importance score for a document using OpenAI's API.
         """
         extract_importance_prompt = """
         On the scale of 1 to 10, where 1 is purely mundane (e.g., brushing teeth, making bed) and 10 is extremely 
-        poignant (e.g., a break up, college acceptance), rate the likely poignancy of the following piece of memory.
-        Memory: {memory}
+        poignant (e.g., a break up, college acceptance), rate the likely poignancy of the following document.
+        Document: {document}
         """.format(
-            memory=memory.content
+            document=document.content
         )
 
-        rate_memory = {
-            "name": "rate_memory",
-            "description": "This function rates memory importance for the given part of the conversation.",
+        rate_document = {
+            "name": "rate_document",
+            "description": "This function rates document importance for the given part of the conversation.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -54,18 +54,18 @@ class ImportanceScorer(BaseScorer):
 
                 chat_completion = completion
 
-            tool_choice = {"type": "function", "function": {"name": "rate_memory"}}
+            tool_choice = {"type": "function", "function": {"name": "rate_document"}}
 
-            rate_memory_tool = {"type": "function", "function": rate_memory}
+            rate_document_tool = {"type": "function", "function": rate_document}
 
             response = chat_completion(
                 # model='gpt-3.5-turbo',
                 messages=[{"role": "user", "content": extract_importance_prompt}],
-                # functions=[rate_memory],
+                # functions=[rate_document],
                 # function_call={
-                #     'name': rate_memory['name'],
+                #     'name': rate_document['name'],
                 # },
-                tools=[rate_memory_tool],
+                tools=[rate_document_tool],
                 tool_choice=tool_choice,
             )
 

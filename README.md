@@ -25,7 +25,7 @@ This starts a local web server at http://localhost:8181.
 ### Recipe: Importing Chat Messages
 
 1. Open http://localhost:8181/docs
-2. Find `POST /v1/memories/chat-processor`
+2. Find `POST /v1/index_documents/chat-processor`
 3. Upload one or more exported chat log files. To get these files, export them from platforms that you use frequently and contain information you want the LLM to know. Exports: [Whatsapp](https://faq.whatsapp.com/1180414079177245/?cms_platform=android) | [Google](https://takeout.google.com/settings/takeout) | [Instagram](https://help.instagram.com/181231772500920) | [Facebook Messenger](https://www.facebook.com/help/messenger-app/713635396288741/?cms_platform=iphone-app&helpref=platform_switcher) | [Telegram](https://www.maketecheasier.com/export-telegram-chat-history/). Ensure you ask permission of the friend who is also in the chat you export. You can also redact their name, messages, and other personal information in later steps. 
 4. Copy, paste, and edit the example parser_configs JSON. Include one configuration object in the list for each file you upload.
 

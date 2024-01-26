@@ -5,7 +5,7 @@ from pydantic import BaseModel
 
 from selfie.data_manager import DataManager
 from selfie.data_processing.parsers.chat import ChatFileParser
-from selfie.memory_index import MemoryIndex
+from selfie.data_index import DataIndex
 
 router = APIRouter()
 
@@ -33,7 +33,7 @@ async def index_document(request: IndexDocumentsRequest):
 
     return [
         await manager.index_document(manager.get_document(document_id),
-                                     lambda document: MemoryIndex.map_share_gpt_data(
+                                     lambda document: DataIndex.map_share_gpt_data(
                                          parser.parse_document(
                                              document.text,
                                              None,

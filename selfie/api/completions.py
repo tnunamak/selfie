@@ -30,11 +30,11 @@ async def create_completion(
 async def create_memory_chat_completion(
         request: ChatCompletionRequest,
 ) -> LlamaCppChatCompletionResponse | LitellmCompletionResponse:
-    return await completion(request, use_memory=True)
+    return await completion(request, do_augmentation=True)
 
 
 @router.post("/v1/memory/v1/completions")
 async def create_memory_completion(
         request: CompletionRequest,
 ) -> LlamaCppCompletionResponse | LitellmCompletionResponse:
-    return await completion(request, use_memory=True)
+    return await completion(request, do_augmentation=True)

@@ -5,8 +5,8 @@ from fastapi import APIRouter, UploadFile, File, Form
 from selfie.api.data_sources import DataLoaderRequest
 from selfie.data_processing.parsers.chat import ChatFileParser
 from selfie.data_processing.parsers.chat.chat_file_parsing_helper import get_files_with_configs, delete_uploaded_files
-from selfie.memory_index import MemoryIndex
-from selfie.memory_index.memory_types import Memory
+from selfie.data_index import DataIndex
+from selfie.data_index.document_types import Document
 
 from llama_index.node_parser.text import SentenceSplitter
 from datetime import datetime
@@ -15,53 +15,52 @@ import importlib
 router = APIRouter()
 
 
-@router.get("/v1/memories")
-async def get_memories(offset: int = 0, limit: int = 10):
-    return await MemoryIndex("n/a").get_memories(offset=offset, limit=limit)
+@router.get("/v1/index_documents")
+async def get_documents(offset: int = 0, limit: int = 10):
+    return await DataIndex("n/a").get_documents(offset=offset, limit=limit)
 
 
-@router.get("/v1/memories/summary")
-async def get_memory_summary(topic: str, limit: Optional[int] = 5, min_score: Optional[float] = None):
-    result = await MemoryIndex("n/a").recall(topic, limit=limit, min_score=min_score)
+@router.get("/v1/index_documents/summary")
+async def get_index_documents_summary(topic: str, limit: Optional[int] = 5, min_score: Optional[float] = None):
+    result = await DataIndex("n/a").recall(topic, limit=limit, min_score=min_score)
     return {
         "summary": result["summary"],
         "score": result["mean_score"],
-        "memories": result["memories"],
+        "documents": result["documents"],
     }
 
 
-@router.post("/v1/memories")
-async def create_memory(memory: Memory):
-    memory_stream = MemoryIndex("n/a")
-    return (await memory_stream.memorize([memory]))[0]
+@router.post("/v1/index_documents")
+async def create_index_document(document: Document):
+    return (await DataIndex("n/a").index([document]))[0]
 
 
-@router.get("/v1/memories/{memory_id}")
-async def get_memory(memory_id: int):
-    return await MemoryIndex("n/a").get_memory(memory_id)
+@router.get("/v1/index_documents/{document_id}")
+async def get_index_document(document_id: int):
+    return await DataIndex("n/a").get_document(document_id)
 
 
-@router.put("/v1/memories/{memory_id}")
-async def update_memory(memory_id: int, memory: Memory):
-    MemoryIndex("n/a").update_memory(memory_id, memory)
-    return {"message": "Memory updated successfully"}
+@router.put("/v1/index_documents/{document_id}")
+async def update_index_document(document_id: int, document: Document):
+    DataIndex("n/a").update_document(document_id, document)
+    return {"message": "Document updated successfully"}
 
 
-@router.delete("/v1/memories/{memory_id}")
-async def delete_memory(memory_id: int):
+@router.delete("/v1/index_documents/{document_id}")
+async def delete_index_document(document_id: int):
     # Sometimes self.embeddings.save() errors on "database is locked", bricks it
     # raise HTTPException(status_code=501, detail="Not implemented")
-    MemoryIndex("n/a").delete_memory(memory_id)
-    return {"message": "Memory deleted successfully"}
+    DataIndex("n/a").delete_document(document_id)
+    return {"message": "Document deleted successfully"}
 
 
-@router.delete("/v1/memories")
-async def delete_memories():
-    MemoryIndex("n/a").delete_all()
-    return {"message": "All memories deleted successfully"}
+@router.delete("/v1/index_documents")
+async def delete_index_documents():
+    DataIndex("n/a").delete_all()
+    return {"message": "All documents deleted successfully"}
 
 
-@router.post("/v1/memories/llama-hub-loader")
+@router.post("/v1/index_documents/llama-hub-loader")
 async def load_data(request: DataLoaderRequest):
     # TODO: extract document metadata from request?
 
@@ -90,10 +89,10 @@ async def load_data(request: DataLoaderRequest):
         text_chunks.extend(cur_text_chunks)
         doc_idxs.extend([doc_idx] * len(cur_text_chunks))
 
-    memories = []
+    documents = []
     for idx, text_chunk in enumerate(text_chunks):
         src_doc = documents[doc_idxs[idx]]
-        memory = Memory(
+        document = Document(
             content=text_chunk,
             source=request.loader_module,
             # importance=0.0,
@@ -104,12 +103,12 @@ async def load_data(request: DataLoaderRequest):
             else datetime.now(),
         )
 
-        memories.append(memory)
+        documents.append(document)
 
-    return {"memories": await MemoryIndex("n/a").memorize(memories, extract_importance=False)}
+    return {"documents": await DataIndex("n/a").index(documents, extract_importance=False)}
 
 
-@router.post("/v1/memories/chat-processor")
+@router.post("/v1/index_documents/chat-processor")
 async def process_chat_files(
         character_name: str,
         files: List[UploadFile] = File(..., description="Upload chat files here."),
@@ -122,12 +121,12 @@ async def process_chat_files(
         extract_importance: bool = False,
 ):
     parser = ChatFileParser()
-    memory_index = MemoryIndex(character_name)
+    data_index = DataIndex(character_name)
 
     files_with_settings = get_files_with_configs(files, parser_configs)
 
-    memories = []
-    new_memory_count = 0
+    documents = []
+    new_document_count = 0
     for file_with_settings in files_with_settings:
         file_data = parser.parse_file(
             file_with_settings["file"],
@@ -135,18 +134,18 @@ async def process_chat_files(
             file_with_settings["config"].speaker_aliases,
         )
 
-        mapped_memories = MemoryIndex.map_share_gpt_data(
+        mapped_documents = DataIndex.map_share_gpt_data(
             file_data.conversations, file_with_settings["file"].split("/")[-1]
         )
 
-        file_memories = await memory_index.memorize(mapped_memories, extract_importance)
-        new_memory_count += len(file_memories)
-        memories.extend(file_memories)
+        file_documents = await data_index.index(mapped_documents, extract_importance)
+        new_document_count += len(file_documents)
+        documents.extend(file_documents)
 
     delete_uploaded_files(files_with_settings)
 
     return {
         "success": True,
-        "num_memories": len(memories),
-        "num_new_memories": new_memory_count,
+        "num_documents": len(documents),
+        "num_new_documents": new_document_count,
     }

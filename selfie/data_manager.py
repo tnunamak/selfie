@@ -17,8 +17,8 @@ import importlib
 from typing import List, Dict, Any, Optional, Callable
 
 from selfie.config import default_storage_root, default_db_name
-from selfie.memory_index import MemoryIndex
-from selfie.memory_index.memory_types import Memory
+from selfie.data_index import DataIndex
+from selfie.data_index.document_types import Document
 
 import logging
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ class DataSource(BaseModel):
         table_name = 'selfie_datasource'
 
 
-class Document(BaseModel):
+class SelfieDocument(BaseModel):
     id = AutoField()
     source = ForeignKeyField(DataSource, backref="documents")
     metadata = TextField()
@@ -56,7 +56,7 @@ class DataManager:
         self.db = SqliteDatabase(os.path.join(storage_path, default_db_name))
         database_proxy.initialize(self.db)
         self.db.connect()
-        self.db.create_tables([DataSource, Document])
+        self.db.create_tables([DataSource, SelfieDocument])
 
     def add_data_source(
         self,
@@ -88,7 +88,7 @@ class DataManager:
                 data_source.loader_module, json.loads(data_source.config)
             )
             for doc in documents:
-                document, created = Document.get_or_create(
+                document, created = SelfieDocument.get_or_create(
                     source=data_source, defaults={"metadata": json.dumps(doc.metadata)}, text=doc.text
                 )
                 changes[document.id] = "Created" if created else "Updated"
@@ -122,47 +122,43 @@ class DataManager:
         loader_module = data_source.loader_module
 
         documents = self._fetch_documents(loader_module, json.loads(data_source.config))
-        memories = [
-            memory for doc in documents for memory in self._process_document_to_memories(document=doc)
+        documents = [
+            document for doc in documents for document in self._map_selfie_documents_to_index_documents(selfie_document=doc)
         ]
 
-        memory_stream = MemoryIndex("n/a")
-        await memory_stream.memorize(memories, extract_importance=False)
+        await DataIndex("n/a").index(documents, extract_importance=False)
 
         # TODO: record the last time this data source was indexed
 
         return {"message": f"{len(documents)} documents indexed successfully"}
 
-    async def index_document(self, document: Document, document_to_memories_fn: Callable[[Document], List[Memory]] = None):
+    async def index_document(self, document: SelfieDocument, selfie_documents_to_index_documents: Callable[[SelfieDocument], List[Document]] = None):
         print("Indexing document")
 
-        if document_to_memories_fn is None:
-            document_to_memories_fn = self._process_document_to_memories
+        if selfie_documents_to_index_documents is None:
+            selfie_documents_to_index_documents = self._map_selfie_documents_to_index_documents
 
-        memories = document_to_memories_fn(document)
-        if not memories:
-            logger.warning("No memories to index")
-            return {"message": "No memories to index"}
+        index_documents = selfie_documents_to_index_documents(document)
+        if not index_documents:
+            logger.warning("No documents to index")
+            return {"message": "No documents to index"}
 
-        indexed_memories = await MemoryIndex("n/a").memorize(memories, extract_importance=False)
+        return await DataIndex("n/a").index(index_documents, extract_importance=False)
 
     @staticmethod
-    def _process_document_to_memories(document: Document):
+    def _map_selfie_documents_to_index_documents(selfie_document: SelfieDocument):
         text_parser = SentenceSplitter(chunk_size=1024)
-        memories = []
+        documents = []
 
-        text_chunks = text_parser.split_text(document.text)
-        for text_chunk in text_chunks:
-            timestamp = DataManager._extract_timestamp(document)
-            memory = Memory(
+        for text_chunk in text_parser.split_text(selfie_document.text):
+            documents.append(Document(
                 content=text_chunk,
-                source=document.source,
-                timestamp=timestamp,
-                source_document_id=document.id,
-            )
-            memories.append(memory)
+                source=selfie_document.source,
+                timestamp=DataManager._extract_timestamp(selfie_document),
+                source_document_id=selfie_document.id,
+            ))
 
-        return memories
+        return documents
 
     @staticmethod
     def _extract_timestamp(doc):
@@ -193,9 +189,9 @@ class DataManager:
 
     def get_documents(self, source_id: Optional[int] = None):
         if source_id:
-            documents = Document.select().where(Document.source_id == source_id)
+            documents = SelfieDocument.select().where(SelfieDocument.source_id == source_id)
         else:
-            documents = Document.select()
+            documents = SelfieDocument.select()
 
         return [
             {"id": doc.id, "metadata": json.loads(doc.metadata)} for doc in documents

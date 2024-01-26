@@ -2,8 +2,8 @@ from datetime import datetime
 from dateutil import parser
 import math
 
-from selfie.memory_index.base_scorer import BaseScorer
-from selfie.memory_index.memory_types import Memory
+from selfie.data_index.base_scorer import BaseScorer
+from selfie.data_index.document_types import Document
 
 from datetime import timezone
 
@@ -14,12 +14,12 @@ class RecencyScorer(BaseScorer):
         self.current_time = current_time
 
     def calculate_raw_score(
-        self, memory: Memory, memory_index: int = None, num_memories: int = None
+        self, document: Document, document_index: int = None, num_documents: int = None
     ):
         """
         Calculate recency score using an exponential decay function.
         """
-        time_difference_seconds = (self.current_time - memory.timestamp).total_seconds()
+        time_difference_seconds = (self.current_time - document.timestamp).total_seconds()
 
         a = 0
         b_years = 0.75
@@ -30,10 +30,10 @@ class RecencyScorer(BaseScorer):
         # This will display the curve in years.
         by_date = math.exp(a - (b_years / seconds_per_year) * time_difference_seconds)
 
-        if memory_index is None or num_memories is None:
+        if document_index is None or num_documents is None:
             return by_date
 
-        by_position = 1 - ((num_memories - memory_index) / num_memories)
+        by_position = 1 - ((num_documents - document_index) / num_documents)
 
         # TODO: Revisit this
         # Give equal weight to time and position

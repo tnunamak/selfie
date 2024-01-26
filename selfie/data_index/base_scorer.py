@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from selfie.memory_index.memory_types import Memory
+from selfie.data_index.document_types import Document
 
 
 class BaseScorer(ABC):
@@ -10,7 +10,7 @@ class BaseScorer(ABC):
     @abstractmethod
     def calculate_raw_score(self, *args, **kwargs):
         """
-        Calculate the raw score for a memory. Implementation is scorer-specific.
+        Calculate the raw score for a document. Implementation is scorer-specific.
         """
         pass
 
@@ -21,8 +21,8 @@ class BaseScorer(ABC):
         """
         return max(0, min(1, score))  # Default normalization logic
 
-    def calculate_score(self, memory: Memory, *args, **kwargs):
+    def calculate_score(self, document: Document, *args, **kwargs):
         """
         Wrapper method to calculate and then normalize the score.
         """
-        return self.normalize_score(self.calculate_raw_score(memory, *args, **kwargs))
+        return self.normalize_score(self.calculate_raw_score(document, *args, **kwargs))

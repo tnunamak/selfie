@@ -10,10 +10,10 @@ from selfie.data_processing.generators.chat_training_data import (
     ChatTrainingDataGenerator,
 )
 from selfie.data_processing.types import ShareGPTMessage
-from selfie.memory_index.memory_types import Memory, ScoredMemory
-from selfie.memory_index.importance_scorer import ImportanceScorer
-from selfie.memory_index.recency_scorer import RecencyScorer
-from selfie.memory_index.relevance_scorer import RelevanceScorer
+from selfie.data_index.document_types import Document, ScoredDocument
+from selfie.data_index.importance_scorer import ImportanceScorer
+from selfie.data_index.recency_scorer import RecencyScorer
+from selfie.data_index.relevance_scorer import RelevanceScorer
 from txtai.embeddings import Embeddings
 import logging
 
@@ -30,9 +30,10 @@ llm = LLM(
     n_gpu_layers=-1,
 )
 
-class MemoryIndex:
+
+class DataIndex:
     def __init__(self, character_name, storage_path: str = default_storage_root, use_local_llm=True, completion=None):
-        logger.info("Initializing MemoryIndex")
+        logger.info("Initializing DataIndex")
         self.storage_path = os.path.join(storage_path, "index")
 
         async def completion_async(prompt):
@@ -69,11 +70,11 @@ class MemoryIndex:
     @staticmethod
     def map_share_gpt_data(
         conversation: List[ShareGPTMessage], source: str = "Unknown", source_document_id: int = None
-    ) -> List[Memory]:
+    ) -> List[Document]:
         chunks = ChatTrainingDataGenerator.group_messages_into_chunks(
             conversation, overlap=1, max_messages=8, max_characters=0
         )
-        memories = []
+        documents = []
         for i, conv in enumerate(chunks):
             if any("REDACTED" in msg.value for msg in conv):
                 continue
@@ -85,17 +86,17 @@ class MemoryIndex:
                 for msg in conv
             ).strip()
 
-            memory = Memory(
+            document = Document(
                 content=formatted_conversation,
                 timestamp=conv[0].timestamp,
                 source=source,
             )
 
             if source_document_id:
-                memory.source_document_id = source_document_id
+                document.source_document_id = source_document_id
 
-            memories.append(memory)
-        return memories
+            documents.append(document)
+        return documents
 
     @staticmethod
     def _calculate_retrieval_score(
@@ -114,29 +115,29 @@ class MemoryIndex:
             + (relevance_score * relevance_weight)
         ) / (importance_weight + recency_weight + relevance_weight)
 
-    async def _summarize_memories(
-        self, character_name: str, memories: List[Memory], context, model
+    async def _summarize_documents(
+        self, character_name: str, documents: List[Document], context, model
     ):
-        logger.info(f"Summarizing {len(memories)} memories")
+        logger.info(f"Summarizing {len(documents)} documents")
 
         if model is None:
             model = "gpt-3.5-turbo"
-        if len(memories) == 0:
+        if len(documents) == 0:
             return None
-        memory_summary = "\n\n".join(
+        document_summary = "\n\n".join(
             [
-                f"{humanize.naturaltime(datetime.now(timezone.utc) - memory.timestamp)}\n{memory.content}"
-                for memory in memories
+                f"{humanize.naturaltime(datetime.now(timezone.utc) - document.timestamp)}\n{document.content}"
+                for document in documents
             ]
         )
 
         if character_name:
-            prompt = f'### Instruction:\nYou are {character_name}. Below are conversation fragments from your recent memories. You are gathering your thoughts in preparation of writing a response for "{context}". In a sentence, concisely tell yourself what you can conclude about this topic from your memories, especially as it relates to you personally.\n\n### Input:\nStart of memories:\n{memory_summary}\nEnd of memories.\n\n### Concise response:\n{character_name}:\nBased on the given conversation fragments, it can be concluded that '
+            prompt = f'### Instruction:\nYou are {character_name}. Below are conversation fragments from your recent memories. You are gathering your thoughts in preparation of writing a response for "{context}". In a sentence, concisely tell yourself what you can conclude about this topic from your memories, especially as it relates to you personally.\n\n### Input:\nStart of memories:\n{document_summary}\nEnd of memories.\n\n### Concise response:\n{character_name}:\nBased on the given conversation fragments, it can be concluded that '
         else:
-            prompt = f'### Instruction:\nBelow are conversation fragments from an unknown person. You are gathering your thoughts in preparation of writing a response for "{context}". In a sentence, concisely answer what you can conclude about this topic from the memories.\n\n### Input:\nStart of memories:\n{memory_summary}\nEnd of memories.\n\n### Concise response:\nYou:\nBased on the given conversation fragments, it can be concluded that '
+            prompt = f'### Instruction:\nBelow are conversation fragments from an unknown person. You are gathering your thoughts in preparation of writing a response for "{context}". In a sentence, concisely answer what you can conclude about this topic from the memories.\n\n### Input:\nStart of memories:\n{document_summary}\nEnd of memories.\n\n### Concise response:\nYou:\nBased on the given conversation fragments, it can be concluded that '
 
-        logger.info(f"Model: {model}")
-        logger.info(f"Prompt: {prompt}")
+        logger.debug(f"Model: {model}")
+        logger.debug(f"Prompt: {prompt}")
 
         # TODO: truncate the prompt to fit the context window
         if model == "local":
@@ -151,40 +152,40 @@ class MemoryIndex:
             )
             return openai_response.choices[0].message.content
 
-    def map_memory(self, memory: Memory, extract_importance=True):
+    def map_document(self, document: Document, extract_importance=True):
         return {
-            **({"id": memory.id} if memory.id is not None else {}),
-            "timestamp": memory.timestamp.replace(tzinfo=timezone.utc).isoformat(),
-            "text": memory.content,
-            "source": memory.source,
+            **({"id": document.id} if document.id is not None else {}),
+            "timestamp": document.timestamp.replace(tzinfo=timezone.utc).isoformat(),
+            "text": document.content,
+            "source": document.source,
             **(
                 {
-                    "importance": memory.importance
-                    if memory.importance is not None  # Only calculate importance if it's not already set
-                    else self.importance_scorer.calculate_score(memory)
+                    "importance": document.importance
+                    if document.importance is not None  # Only calculate importance if it's not already set
+                    else self.importance_scorer.calculate_score(document)
 
                 } if extract_importance else {}
             ),
-            "created_timestamp": memory.created_timestamp.replace(tzinfo=timezone.utc).isoformat(),
-            "updated_timestamp": memory.updated_timestamp.replace(tzinfo=timezone.utc).isoformat(),
-            **({"source_document_id": memory.source_document_id} if memory.source_document_id is not None else {})
+            "created_timestamp": document.created_timestamp.replace(tzinfo=timezone.utc).isoformat(),
+            "updated_timestamp": document.updated_timestamp.replace(tzinfo=timezone.utc).isoformat(),
+            **({"source_document_id": document.source_document_id} if document.source_document_id is not None else {})
         }
 
-    async def memorize(self, memories: List[Memory], extract_importance=True, upsert=False):
-        logger.info(f"Memorizing {len(memories)} memories")
+    async def index(self, documents: List[Document], extract_importance=True, upsert=False):
+        logger.info(f"Indexing {len(documents)} documents")
 
-        memories = [
-            await self.find_existing_memory(memory) or memory for memory in memories
-        ] if upsert else memories
+        documents = [
+            await self.find_existing_document(document) or document for document in documents
+        ] if upsert else documents
 
         with_importance = [
-            self.map_memory(memory, extract_importance) for memory in memories
+            self.map_document(document, extract_importance) for document in documents
         ]
         self.embeddings.upsert(with_importance)
         self.embeddings.save(self.storage_path)
 
         return with_importance
-        # TODO: return memory with ID, if possible
+        # TODO: return document with ID, if possible
 
     async def recall(
         self,
@@ -203,16 +204,16 @@ class MemoryIndex:
             min_score = 0.4
 
         if not os.path.exists(self.storage_path):
-            return {"memories": [], "summary": "No memories found."}
+            return {"documents": [], "summary": "No documents found."}
         self.embeddings.load(self.storage_path)
 
         query = f"SELECT score, id, timestamp, text, importance, source, updated_timestamp, source_document_id FROM txtai WHERE similar(:topic)"
         results = self.embeddings.search(
             query, limit=limit, parameters={"topic": topic}
         )
-        memories_list: List[ScoredMemory] = []
+        documents_list: List[ScoredDocument] = []
         for result in results:
-            memory = Memory(
+            document = Document(
                 content=result["text"],
                 timestamp=result["timestamp"],
                 importance=result["importance"],
@@ -221,10 +222,10 @@ class MemoryIndex:
                 source_document_id=result["source_document_id"],
             )
             relevance_score = self.relevance_scorer.calculate_score(
-                memory, result["score"]
+                document, result["score"]
             )
-            recency_score = self.recency_scorer.calculate_score(memory)
-            importance_score = memory.importance
+            recency_score = self.recency_scorer.calculate_score(document)
+            importance_score = document.importance
             retrieval_score = self._calculate_retrieval_score(
                 recency_score,
                 relevance_score,
@@ -233,36 +234,36 @@ class MemoryIndex:
                 recency_weight,
                 relevance_weight,
             )
-            memories_list.append(
-                ScoredMemory(
-                    **memory.model_dump(),
+            documents_list.append(
+                ScoredDocument(
+                    **document.model_dump(),
                     score=retrieval_score,
                     relevance=relevance_score,
                     recency=recency_score,
                 )
             )
 
-        memories_list = [m for m in memories_list if m.score > min_score]
-        if len(memories_list) == 0:
-            return {"memories": [], "summary": "No memories found.", "mean_score": 0}
+        documents_list = [m for m in documents_list if m.score > min_score]
+        if len(documents_list) == 0:
+            return {"documents": [], "summary": "No documents found.", "mean_score": 0}
 
-        memories_list.sort(key=lambda x: x.score, reverse=True)
-        short_memories_list = memories_list[:limit]
+        documents_list.sort(key=lambda x: x.score, reverse=True)
+        short_documents_list = documents_list[:limit]
         summary = (
-            await self._summarize_memories(
+            await self._summarize_documents(
                 character_name,
-                short_memories_list,
+                short_documents_list,
                 topic_context if topic_context else topic,
                 ("local" if local_llm else None),
             )
             if include_summary
             else None
         )
-        return {"memories": short_memories_list, "summary": summary, "mean_score": sum([m.score for m in short_memories_list]) / len(short_memories_list)}
+        return {"documents": short_documents_list, "summary": summary, "mean_score": sum([m.score for m in short_documents_list]) / len(short_documents_list)}
 
     # TODO: Fix this
     def delete_all(self):
-        logger.info("Deleting all memories")
+        logger.info("Deleting all documents")
         if os.path.exists(self.storage_path):
             shutil.rmtree(self.storage_path)
             logger.info(f"Deleted storage path: {self.storage_path}")
@@ -270,18 +271,18 @@ class MemoryIndex:
         else:
             logger.info("Storage path not found, nothing to delete.")
 
-    def delete_memory(self, memory_id):
-        self.embeddings.delete([memory_id])
+    def delete_document(self, document_id):
+        self.embeddings.delete([document_id])
         self.embeddings.save(self.storage_path)
         # TODO: determine whether anything was actually deleted
 
-    def update_memory(self, memory_id, updated_memory, extract_importance=True):
+    def update_document(self, document_id, updated_document, extract_importance=True):
         self.embeddings.upsert(
-            [(memory_id, self.map_memory(updated_memory, extract_importance))]
+            [(document_id, self.map_document(updated_document, extract_importance))]
         )
         self.embeddings.save(self.storage_path)
 
-    def get_memory_count(self):
+    def get_document_count(self):
         if not os.path.exists(self.storage_path):
             return 0
 
@@ -289,15 +290,15 @@ class MemoryIndex:
         result = self.embeddings.search("SELECT count(*) FROM txtai")
         return result[0]["count(*)"]
 
-    async def get_memory(self, memory_id):
+    async def get_document(self, document_id):
         if not os.path.exists(self.storage_path):
             return None  # TODO: raise exception
         self.embeddings.load(self.storage_path)
-        query = f"SELECT id, timestamp, text, importance, source, updated_timestamp, source_document_id source FROM txtai WHERE id = {memory_id}"
+        query = f"SELECT id, timestamp, text, importance, source, updated_timestamp, source_document_id source FROM txtai WHERE id = {document_id}"
         result = self.embeddings.search(query)
         return result[0] if result else None
 
-    async def find_existing_memory(self, memory: Memory):
+    async def find_existing_document(self, document: Document):
         if not os.path.exists(self.storage_path):
             return None
         self.embeddings.load(self.storage_path)
@@ -305,16 +306,16 @@ class MemoryIndex:
         result = self.embeddings.search(
             query,
             parameters={
-                "text": memory.content,
-                "timestamp": memory.timestamp.isoformat(),
-                "source": memory.source,
-                "source_document_id": memory.source_document_id,
+                "text": document.content,
+                "timestamp": document.timestamp.isoformat(),
+                "source": document.source,
+                "source_document_id": document.source_document_id,
             },
         )
         if len(result) > 1:
-            logger.warning(f"Found {len(result)} memories matching {memory})")
+            logger.warning(f"Found {len(result)} documents matching {document})")
         if len(result) > 0:
-            logger.debug(f"Found an existing memory matching")
+            logger.debug(f"Found an existing document matching")
 
             # TODO: This is kinda horrible
             result[0]['content'] = result[0]['text']
@@ -322,9 +323,9 @@ class MemoryIndex:
             result[0]['id'] = int(result[0]['id'])
             result[0]['source_document_id'] = int(result[0]['source_document_id'])
 
-        return Memory(**result[0]) if result else None
+        return Document(**result[0]) if result else None
 
-    async def get_memories(self, offset=0, limit=10):
+    async def get_documents(self, offset=0, limit=10):
         if not os.path.exists(self.storage_path):
             return []
         self.embeddings.load(self.storage_path)
