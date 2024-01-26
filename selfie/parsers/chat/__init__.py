@@ -5,10 +5,10 @@ from enum import unique, Enum
 from typing import Dict
 import yaml
 
-from selfie.data_processing.parsers.chat.discord import DiscordParser
-from selfie.data_processing.parsers.chat.whatsapp import WhatsAppParser
-from selfie.data_processing.parsers.chat.google import GoogleMessagesParser
-from selfie.data_processing.types import ShareGPTConversation, ShareGPTMessage
+from selfie.parsers.chat.discord import DiscordParser
+from selfie.parsers.chat.whatsapp import WhatsAppParser
+from selfie.parsers.chat.google import GoogleMessagesParser
+from selfie.types.share_gpt import ShareGPTConversation, ShareGPTMessage
 
 import logging
 logger = logging.getLogger(__name__)

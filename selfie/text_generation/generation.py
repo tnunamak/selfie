@@ -6,9 +6,8 @@ from fastapi import HTTPException
 from sse_starlette import EventSourceResponse
 from txtai.pipeline import GenerationFactory, LLM
 
-from selfie.augmentation import augment
 from selfie.config import default_local_model
-from selfie.types import SelfieCompletionResponse, CompletionRequest, ChatCompletionRequest
+from selfie.types.completion_requests import SelfieCompletionResponse, CompletionRequest, ChatCompletionRequest
 
 logger = logging.getLogger(__name__)
 

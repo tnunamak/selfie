@@ -2,8 +2,8 @@ from datetime import datetime
 from dateutil import parser
 import math
 
-from selfie.data_index.base_scorer import BaseScorer
-from selfie.data_index.document_types import Document
+from selfie.embeddings.base_scorer import BaseScorer
+from selfie.embeddings.document_types import Document
 
 from datetime import timezone
 

@@ -3,8 +3,8 @@ from typing import Dict, Any, List
 
 from pydantic import BaseModel
 
-from selfie.data_processing.parsers.chat.base import JsonBasedChatParser
-from selfie.data_processing.types import ShareGPTConversation
+from selfie.parsers.chat.base import JsonBasedChatParser
+from selfie.types.share_gpt import ShareGPTConversation
 
 
 class Author(BaseModel):

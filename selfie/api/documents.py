@@ -3,9 +3,9 @@ from typing import Optional, List
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from selfie.data_manager import DataManager
-from selfie.data_processing.parsers.chat import ChatFileParser
-from selfie.data_index import DataIndex
+from selfie.database import DataManager
+from selfie.parsers.chat import ChatFileParser
+from selfie.embeddings import DataIndex
 
 router = APIRouter()
 

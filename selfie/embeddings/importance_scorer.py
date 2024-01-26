@@ -1,8 +1,8 @@
 import json
 
 from selfie.config import default_local_functionary_model
-from selfie.data_index.base_scorer import BaseScorer
-from selfie.data_index.document_types import Document
+from selfie.embeddings.base_scorer import BaseScorer
+from selfie.embeddings.document_types import Document
 
 
 class ImportanceScorer(BaseScorer):

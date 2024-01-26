@@ -17,8 +17,8 @@ import importlib
 from typing import List, Dict, Any, Optional, Callable
 
 from selfie.config import default_storage_root, default_db_name
-from selfie.data_index import DataIndex
-from selfie.data_index.document_types import Document
+from selfie.embeddings import DataIndex
+from selfie.embeddings.document_types import Document
 
 import logging
 logger = logging.getLogger(__name__)
@@ -198,7 +198,8 @@ class DataManager:
         ]  # Example usage
 
     def get_document(self, document_id: str):
-        return Document.get_by_id(document_id)
+        return SelfieDocument.get_by_id(document_id)
+
 
 if __name__ == "__main__":
     manager = DataManager()

@@ -3,7 +3,7 @@ from typing import Optional, Any, List, Dict
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from selfie.data_manager import DataManager
+from selfie.database import DataManager
 
 router = APIRouter()
 

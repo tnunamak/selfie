@@ -4,9 +4,9 @@ from llama_cpp import (
     CreateCompletionResponse as LlamaCppCompletionResponse,
     CreateChatCompletionResponse as LlamaCppChatCompletionResponse,
 )
-from selfie.types import ChatCompletionRequest, CompletionRequest
+from selfie.types.completion_requests import ChatCompletionRequest, CompletionRequest
 
-from selfie.augmentation import completion
+from selfie.text_generation import completion
 
 router = APIRouter()
 

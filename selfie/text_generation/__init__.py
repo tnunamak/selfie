@@ -1,6 +1,6 @@
-from selfie.augmentation.augmentation import augment
-from selfie.types import SelfieCompletionResponse, ChatCompletionRequest, CompletionRequest
-from selfie.augmentation.completion import completion as _completion
+from selfie.text_generation.retrieval_augmentation import augment
+from selfie.types.completion_requests import SelfieCompletionResponse, ChatCompletionRequest, CompletionRequest
+from selfie.text_generation.generation import completion as generate_text
 
 
 async def completion(
@@ -26,4 +26,4 @@ async def completion(
 
         await augment(request, augmentation_completion)
 
-    return await _completion(request)
+    return await generate_text(request)

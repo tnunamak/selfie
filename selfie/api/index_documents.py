@@ -3,10 +3,10 @@ from typing import Optional, List
 from fastapi import APIRouter, UploadFile, File, Form
 
 from selfie.api.data_sources import DataLoaderRequest
-from selfie.data_processing.parsers.chat import ChatFileParser
-from selfie.data_processing.parsers.chat.chat_file_parsing_helper import get_files_with_configs, delete_uploaded_files
-from selfie.data_index import DataIndex
-from selfie.data_index.document_types import Document
+from selfie.parsers.chat import ChatFileParser
+from selfie.parsers.chat.chat_file_parsing_helper import get_files_with_configs, delete_uploaded_files
+from selfie.embeddings import DataIndex
+from selfie.embeddings.document_types import Document
 
 from llama_index.node_parser.text import SentenceSplitter
 from datetime import datetime

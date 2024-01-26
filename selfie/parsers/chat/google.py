@@ -1,10 +1,10 @@
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from pydantic import BaseModel, Field, RootModel
 
-from selfie.data_processing.parsers.chat.base import JsonBasedChatParser, TextBasedChatParser
-from selfie.data_processing.types import ShareGPTConversation
+from selfie.parsers.chat.base import JsonBasedChatParser, TextBasedChatParser
+from selfie.types.share_gpt import ShareGPTConversation
 
 
 class Author(BaseModel):

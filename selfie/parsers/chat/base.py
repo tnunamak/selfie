@@ -5,7 +5,7 @@ from datetime import timezone
 
 from pydantic import ValidationError
 
-from selfie.data_processing.types import ShareGPTConversation, ShareGPTMessage
+from selfie.types.share_gpt import ShareGPTConversation, ShareGPTMessage
 
 import logging
 logger = logging.getLogger(__name__)

@@ -1,9 +1,9 @@
 from datetime import datetime
-from typing import List, Dict, Union, Any
+from typing import List, Dict
 import re
 
-from selfie.data_processing.parsers.chat.base import TextBasedChatParser
-from selfie.data_processing.types import ShareGPTMessage
+from selfie.parsers.chat.base import TextBasedChatParser
+from selfie.types.share_gpt import ShareGPTMessage
 
 
 class WhatsAppParser(TextBasedChatParser):

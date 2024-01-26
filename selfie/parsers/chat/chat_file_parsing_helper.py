@@ -5,7 +5,7 @@ from typing import Optional, Dict, List
 from fastapi import UploadFile, HTTPException
 from pydantic import BaseModel, field_validator
 
-from selfie.data_processing.parsers.chat import Parser
+from selfie.parsers.chat import Parser
 
 
 class ChatFileParserConfig(BaseModel):

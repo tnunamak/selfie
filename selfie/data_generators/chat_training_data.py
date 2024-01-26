@@ -10,8 +10,8 @@ from itertools import groupby
 
 from enum import Enum
 
-from selfie.data_processing.parsers.chat import ChatFileParser, Parser
-from selfie.data_processing.types import ShareGPTMessage
+from selfie.parsers.chat import ChatFileParser, Parser
+from selfie.types.share_gpt import ShareGPTMessage
 
 
 class Strategy(Enum):

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from selfie.data_index.document_types import Document
+from selfie.embeddings.document_types import Document
 
 
 class BaseScorer(ABC):

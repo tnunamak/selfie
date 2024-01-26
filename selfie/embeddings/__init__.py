@@ -6,14 +6,14 @@ from typing import Optional, List
 import humanize
 
 from selfie.config import default_storage_root, default_db_name, default_local_model
-from selfie.data_processing.generators.chat_training_data import (
+from selfie.data_generators.chat_training_data import (
     ChatTrainingDataGenerator,
 )
-from selfie.data_processing.types import ShareGPTMessage
-from selfie.data_index.document_types import Document, ScoredDocument
-from selfie.data_index.importance_scorer import ImportanceScorer
-from selfie.data_index.recency_scorer import RecencyScorer
-from selfie.data_index.relevance_scorer import RelevanceScorer
+from selfie.types.share_gpt import ShareGPTMessage
+from selfie.embeddings.document_types import Document, ScoredDocument
+from selfie.embeddings.importance_scorer import ImportanceScorer
+from selfie.embeddings.recency_scorer import RecencyScorer
+from selfie.embeddings.relevance_scorer import RelevanceScorer
 from txtai.embeddings import Embeddings
 import logging
 
