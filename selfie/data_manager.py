@@ -20,6 +20,8 @@ from selfie.config import default_storage_root, default_db_name
 from selfie.memory_index import MemoryIndex
 from selfie.memory_index.memory_types import Memory
 
+import logging
+logger = logging.getLogger(__name__)
 
 database_proxy = Proxy()
 
@@ -137,7 +139,12 @@ class DataManager:
         if document_to_memories_fn is None:
             document_to_memories_fn = self._process_document_to_memories
 
-        indexed_memories = await MemoryIndex("n/a").memorize(document_to_memories_fn(document), extract_importance=False)
+        memories = document_to_memories_fn(document)
+        if not memories:
+            logger.warning("No memories to index")
+            return {"message": "No memories to index"}
+
+        indexed_memories = await MemoryIndex("n/a").memorize(memories, extract_importance=False)
 
     @staticmethod
     def _process_document_to_memories(document: Document):

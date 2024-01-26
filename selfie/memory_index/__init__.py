@@ -23,12 +23,22 @@ logger = logging.getLogger(__name__)
 
 default_importance = 0.3
 
+llm = LLM(
+    path=default_local_model,
+    method="llama.cpp",
+    n_ctx=8192,
+    n_gpu_layers=-1,
+)
 
 class MemoryIndex:
-    def __init__(self, character_name, storage_path: str = default_storage_root, use_local_llm=True, completion_fn=None):
+    def __init__(self, character_name, storage_path: str = default_storage_root, use_local_llm=True, completion=None):
         logger.info("Initializing MemoryIndex")
         self.storage_path = os.path.join(storage_path, "index")
-        self.completion_fn = completion_fn
+
+        async def completion_async(prompt):
+            return llm(prompt)
+
+        self.completion = completion or completion_async
 
         self.character_name = character_name
         self.embeddings = Embeddings(
@@ -105,7 +115,7 @@ class MemoryIndex:
         ) / (importance_weight + recency_weight + relevance_weight)
 
     async def _summarize_memories(
-        self, character_name: str, memories: List[Memory], question, model
+        self, character_name: str, memories: List[Memory], context, model
     ):
         logger.info(f"Summarizing {len(memories)} memories")
 
@@ -121,16 +131,16 @@ class MemoryIndex:
         )
 
         if character_name:
-            prompt = f'### Instruction:\nYou are {character_name}. Below are conversation fragments from your recent memories. You are gathering your thoughts in preparation of responding to the message "{question}". In a sentence, concisely tell yourself what you can conclude about this topic from your memories, especially as it relates to you personally.\n\n### Input:\nStart of memories:\n{memory_summary}\nEnd of memories.\n\n### Concise response:\n{character_name}:\n'
+            prompt = f'### Instruction:\nYou are {character_name}. Below are conversation fragments from your recent memories. You are gathering your thoughts in preparation of writing a response for "{context}". In a sentence, concisely tell yourself what you can conclude about this topic from your memories, especially as it relates to you personally.\n\n### Input:\nStart of memories:\n{memory_summary}\nEnd of memories.\n\n### Concise response:\n{character_name}:\nBased on the given conversation fragments, it can be concluded that '
         else:
-            prompt = f'### Instruction:\nBelow are conversation fragments from an unknown person. You are gathering your thoughts in preparation of responding to the message "{question}". In a sentence, concisely answer what you can conclude about this topic from the memories.\n\n### Input:\nStart of memories:\n{memory_summary}\nEnd of memories.\n\n### Concise response:\nYou:\n'
+            prompt = f'### Instruction:\nBelow are conversation fragments from an unknown person. You are gathering your thoughts in preparation of writing a response for "{context}". In a sentence, concisely answer what you can conclude about this topic from the memories.\n\n### Input:\nStart of memories:\n{memory_summary}\nEnd of memories.\n\n### Concise response:\nYou:\nBased on the given conversation fragments, it can be concluded that '
 
         logger.info(f"Model: {model}")
         logger.info(f"Prompt: {prompt}")
 
         # TODO: truncate the prompt to fit the context window
         if model == "local":
-            return await self.completion_fn(prompt)
+            return await self.completion(prompt)
         else:
             from litellm import completion
 
@@ -178,7 +188,8 @@ class MemoryIndex:
 
     async def recall(
         self,
-        topic,
+        topic: str,
+        topic_context=None,
         character_name: Optional[str] = None,
         limit=5,
         importance_weight=0,
@@ -241,7 +252,7 @@ class MemoryIndex:
             await self._summarize_memories(
                 character_name,
                 short_memories_list,
-                topic,
+                topic_context if topic_context else topic,
                 ("local" if local_llm else None),
             )
             if include_summary

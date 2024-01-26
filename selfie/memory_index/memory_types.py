@@ -14,7 +14,7 @@ class Memory(BaseModel):
     updated_timestamp: Optional[datetime] = Field(None, description="Time when the memory was last updated")
     source_document_id: Optional[int] = Field(None, description="ID of the source document")
 
-    def weaviate_dict(self, *args, **kwargs):
+    def to_dict(self, *args, **kwargs):
         d = super().model_dump(*args, **kwargs)
         d['timestamp'] = self.timestamp.isoformat() if self.timestamp else None
         d['created_timestamp'] = self.created_timestamp.isoformat() if self.created_timestamp else None

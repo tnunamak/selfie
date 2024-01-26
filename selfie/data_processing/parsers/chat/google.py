@@ -56,6 +56,12 @@ class GoogleMessagesParser(JsonBasedChatParser):
             timestamp_str = message_data["Timestamp"]
             timestamp_iso = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=self.timezone).isoformat()
 
+            if value == "Failed to load message":
+                continue
+
+            if value == "Failed to load message\nFailed to load message":
+                continue
+
             parsed_data.append({
                 "from": from_user,
                 "value": value,
