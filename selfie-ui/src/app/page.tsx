@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import {ChevronDownIcon, ChevronUpIcon} from "@heroicons/react/20/solid";
+import CodeSnippet from "@/app/components/CodeSnippet";
 
 const SelfieManager = () => {
   const [dataSources, setDataSources] = useState([]);
@@ -239,15 +240,13 @@ const SelfieManager = () => {
   };
 
   const handleIndexDocument = async (documentId, deleteInstead = false) => {
-    return handleIndexSelected(new Set([documentId]), deleteInstead);
-  }
+    await handleIndexSelected([documentId], deleteInstead);
+  };
 
 
-  const handleIndexSelected = async (documents = selectedDocuments, deleteInstead = false) => {
+  const handleIndexSelected = async (documentIds = Array.from(selectedDocuments), deleteInstead = false) => {
     setIsTaskPending(true);
-
-    const documentIds = Array.from(documents);
-    console.log(`${deleteInstead ? 'Uni' : 'I'}ndexing documents:`, documentIds);
+    console.log(`${deleteInstead ? 'Unindexing' : 'Indexing'} documents:`, documentIds);
 
     try {
       const response = await fetch(`http://localhost:8181/v1/documents/${ deleteInstead ? 'unindex' : 'index'}`, {
@@ -328,7 +327,7 @@ const SelfieManager = () => {
       }
 
       // Refresh the list of data sources to reflect the deletion
-      await fetchDocuments(dataSourceId);
+      await Promise.all([fetchDataSources(), fetchDocuments(dataSourceId)]);
     } catch (error) {
       console.error("Failed to delete data source:", error);
     }
@@ -348,8 +347,45 @@ const SelfieManager = () => {
 
   if (loading) return <div>Loading data sources...</div>;
 
+  const jsExample = (<CodeSnippet snippet={`import OpenAI from 'openai';
+
+const openai = new OpenAI({
+  baseURL: 'http://localhost:8181/v1/memory/v1',
+  apiKey: ''
+});
+
+const name = 'Alice';
+const chatCompletion = await openai.chat.completions.create({
+  // model: 'TheBloke/Mistral-7B-Instruct-v0.2-GGUF/mistral-7b-instruct-v0.2.Q5_K_M.gguf', // Optionally, customize the model used
+  messages: [
+    { role: 'system', content: \`Write $\{name\}'s next reply in a fictional chat with $\{name\} and their friends.\` },
+    { role: 'user', content: 'Favorite ice cream?' },
+  ]
+} as any);
+
+console.log(chatCompletion.choices[0].message.content);
+// "Alice enjoys Bahn Mi and Vietnamese coffee."
+`} />);
   return (
     <div className="container mx-auto p-4">
+      <h1 className="text-4xl font-bold mb-4">Usage</h1>
+      <section className="mb-8">
+        <p className="mb-4">To get started, add a directory containing chat files, then index one or more documents to
+          add them to the knowledge bank.</p>
+        <p>
+          Once indexed, data will be used automatically in chat completions.
+          {jsExample}
+        </p>
+        <p>
+          Explore and test the full set of API features for indexed data on <a className="link"
+                                                                               href="http://localhost:8181/docs"
+                                                                               target="_blank" rel="noreferrer">the
+          documentation page</a>.
+          For a quick start, try the <a className="link"
+                                        href="http://localhost:8181/docs#/default/get_index_documents_summary_v1_index_documents_summary_get"
+                                        target="_blank" rel="noreferrer">Summary API</a>.
+        </p>
+      </section>
       <h1 className="text-4xl font-bold mb-4">Source Directories</h1>
       <div className="flex flex-wrap items-center mb-4">
         <label className="label mr-2">
@@ -425,57 +461,62 @@ const SelfieManager = () => {
         </div>
       )}
 
-      <button className="btn" onClick={handleIndexSelected} disabled={selectedDocuments.size === 0 || isTaskPending}>
+      <button className="btn mr-4" onClick={() => handleIndexSelected()}
+              disabled={selectedDocuments.size === 0 || isTaskPending}>
         Index Documents
+      </button>
+      <button className="btn btn-error btn-outline" onClick={() => handleIndexSelected(undefined, true)}
+              disabled={selectedDocuments.size === 0 || isTaskPending}>
+        Unindex Documents
       </button>
       <div className="overflow-x-auto">
         <table className="table w-full">
-            <thead>
-            <tr className="cursor-pointer">
-              <th className="p-2" style={{lineHeight: 0}}>
-                <input
-                  type="checkbox"
-                  checked={selectAll}
-                  onChange={handleToggleSelectAll}
-                  className="checkbox"
-                />
-              </th>
-              {/* TODO: make sortable */}
-              <th className="p-2 cursor-default">
-                Source
-              </th>
-              <th className="p-2 cursor-default">
-                  Is Indexed
-              </th>
+          <thead>
+          <tr className="cursor-pointer">
+            <th className="p-2" style={{lineHeight: 0}}>
+              <input
+                type="checkbox"
+                checked={selectAll}
+                onChange={handleToggleSelectAll}
+                className="checkbox"
+              />
+            </th>
+            {/* TODO: make sortable */}
+            <th className="p-2 cursor-default">
+              Source
+            </th>
+            <th className="p-2 cursor-default">
+              Is Indexed
+            </th>
             {columnNames.map((colName) => (
               <th key={colName} onClick={() => handleHeaderClick(colName)}>
-                  {toTitleCase(colName)}
-                  {sortField === colName && (
-                    sortDirection === 'asc' ? <ChevronUpIcon className="h-4 w-4 float-right"/> :
-                      <ChevronDownIcon className="h-4 w-4 float-right"/>
-                  )}
-                </th>
-              ))}
-              <th>Actions</th>
-            </tr>
-            </thead>
+                {toTitleCase(colName)}
+                {sortField === colName && (
+                  sortDirection === 'asc' ? <ChevronUpIcon className="h-4 w-4 float-right"/> :
+                    <ChevronDownIcon className="h-4 w-4 float-right"/>
+                )}
+              </th>
+            ))}
+            <th>Actions</th>
+          </tr>
+          </thead>
           <tbody>
-            {dataSources.flatMap(dataSource =>
-              sortedDocuments[dataSource.id]?.map(doc => (
-                <TableRow
-                  key={doc.id}
-                  doc={doc}
-                  dataSource={dataSource}
-                  columnNames={columnNames}
-                  isSelected={selectedDocuments.has(doc.id)}
-                  onToggle={toggleDocumentSelection}
-                />
-              ))
-            )}
+          {dataSources.flatMap(dataSource =>
+            sortedDocuments[dataSource.id]?.map(doc => (
+              <TableRow
+                key={doc.id}
+                doc={doc}
+                dataSource={dataSource}
+                columnNames={columnNames}
+                isSelected={selectedDocuments.has(doc.id)}
+                onToggle={toggleDocumentSelection}
+              />
+            ))
+          )}
           </tbody>
 
-          </table>
-        </div>
+        </table>
+      </div>
     </div>
   );
 };

@@ -113,7 +113,7 @@ class DataIndex:
             finally:
                 self.db_write_queue.task_done()
 
-    async def enqueue_task(self, task: Callable[..., Any], *args, **kwargs) -> asyncio.Future:
+    async def enqueue_task(self, task: Callable[..., Any], *args, **kwargs) -> Any:
         """Enqueue a task that can be either synchronous or asynchronous."""
         future = asyncio.Future()
         if asyncio.iscoroutinefunction(task) or isinstance(task, Coroutine):
@@ -123,7 +123,7 @@ class DataIndex:
             # Wrap synchronous function and its arguments in a lambda for deferred execution
             wrapped_task = lambda: task(*args, **kwargs)
         await self.db_write_queue.put((wrapped_task, future))
-        return future
+        return await future
 
     async def enqueue_upsert(self, documents: List[Dict[str, Any]] | List[tuple[int, Dict[str, Any]]]):
         """Enqueue an upsert operation."""
@@ -384,9 +384,10 @@ class DataIndex:
 
     async def delete_documents_with_source_documents(self, source_document_ids):
         results = self._query(where=f"source_document_id IN ({', '.join([str(doc_id) for doc_id in source_document_ids])})", limit=999999)
-        await self.enqueue_delete([result['id'] for result in results])
-        deleted_ids = [result['id'] for result in results] # TODO: this is a hack because enqueue_delete doesn't return anything
-        return deleted_ids
+        print(f"Trying to delete {len(results)} results for source documents: {source_document_ids}")
+        results = await self.enqueue_delete([result['id'] for result in results])
+        print(f"Deleted {len(results)} indexed documents")
+        return results
 
     async def update_document(self, document_id, updated_document, extract_importance=True):
         await self.enqueue_upsert(
