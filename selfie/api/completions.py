@@ -11,7 +11,7 @@ from selfie.text_generation import completion
 router = APIRouter()
 
 
-@router.post("/v1/chat/completions")
+@router.post("/chat/completions")
 async def create_chat_completion(
         request: ChatCompletionRequest,
 ) -> LlamaCppChatCompletionResponse | LitellmCompletionResponse:
@@ -19,21 +19,21 @@ async def create_chat_completion(
 
 
 # TODO can StreamingResponse's schema be defined?
-@router.post("/v1/completions")
+@router.post("/completions")
 async def create_completion(
         request: CompletionRequest,
 ) -> LlamaCppCompletionResponse | LitellmCompletionResponse:
     return await completion(request)
 
 
-@router.post("/v1/memory/v1/chat/completions")
+@router.post("/memory/chat/completions")
 async def create_memory_chat_completion(
         request: ChatCompletionRequest,
 ) -> LlamaCppChatCompletionResponse | LitellmCompletionResponse:
     return await completion(request, do_augmentation=True)
 
 
-@router.post("/v1/memory/v1/completions")
+@router.post("/memory/completions")
 async def create_memory_completion(
         request: CompletionRequest,
 ) -> LlamaCppCompletionResponse | LitellmCompletionResponse:

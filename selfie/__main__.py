@@ -5,7 +5,7 @@ from selfie.api import app
 
 @app.on_event("startup")
 def open_browser():
-    webbrowser.open("http://localhost:8181/docs")
+    webbrowser.open("http://localhost:8181")
 
 
 # Uncomment this for hot-reloading

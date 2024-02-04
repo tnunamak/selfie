@@ -14,11 +14,12 @@ Selfie personalizes text generation, augmenting both local and hosted Large Lang
 
 ## Usage
 
-In the future, pre-built executables will be available. For now, you can run selfie with Python:
+In the future, pre-built executables will be available. For now, you can run selfie with yarn, poetry, and python:
 
-1. `poetry shell`
-2. `poetry install` or `poetry install -E gpu` (to enable GPU devices via transformers). Enable GPU or Metal acceleration via llama.cpp by installing GPU-enabled llama-cpp-python, see Scripts.
-3. `python -m selfie`. The first time you run this, it will download ~4gb of model weights. While you wait, you can go download your whatsapp or google takeout data for the next step. 
+1. `./scripts/build-ui.sh` (requires `yarn`)
+2. `poetry shell`
+3. `poetry install` or `poetry install -E gpu` (to enable GPU devices via transformers). Enable GPU or Metal acceleration via llama.cpp by installing GPU-enabled llama-cpp-python, see Scripts.
+4. `python -m selfie`. The first time you run this, it will download ~4gb of model weights. While you wait, you can go download your whatsapp or google takeout data for the next step. 
 
 This starts a local web server at http://localhost:8181.
 

@@ -15,12 +15,12 @@ import importlib
 router = APIRouter()
 
 
-@router.get("/v1/index_documents")
+@router.get("/index_documents")
 async def get_documents(offset: int = 0, limit: int = 10):
     return await DataIndex("n/a").get_documents(offset=offset, limit=limit)
 
 
-@router.get("/v1/index_documents/summary")
+@router.get("/index_documents/summary")
 async def get_index_documents_summary(topic: str, limit: Optional[int] = 5, min_score: Optional[float] = None):
     result = await DataIndex("n/a").recall(topic, limit=limit, min_score=min_score)
     return {
@@ -30,23 +30,23 @@ async def get_index_documents_summary(topic: str, limit: Optional[int] = 5, min_
     }
 
 
-@router.post("/v1/index_documents")
+@router.post("/index_documents")
 async def create_index_document(document: Document):
     return (await DataIndex("n/a").index([document]))[0]
 
 
-@router.get("/v1/index_documents/{document_id}")
+@router.get("/index_documents/{document_id}")
 async def get_index_document(document_id: int):
     return await DataIndex("n/a").get_document(document_id)
 
 
-@router.put("/v1/index_documents/{document_id}")
+@router.put("/index_documents/{document_id}")
 async def update_index_document(document_id: int, document: Document):
     await DataIndex("n/a").update_document(document_id, document)
     return {"message": "Document updated successfully"}
 
 
-@router.delete("/v1/index_documents/{document_id}")
+@router.delete("/index_documents/{document_id}")
 async def delete_index_document(document_id: int):
     # Sometimes self.embeddings.save() errors on "database is locked", bricks it
     # raise HTTPException(status_code=501, detail="Not implemented")
@@ -54,13 +54,13 @@ async def delete_index_document(document_id: int):
     return {"message": "Document deleted successfully"}
 
 
-@router.delete("/v1/index_documents")
+@router.delete("/index_documents")
 async def delete_index_documents():
     DataIndex("n/a").delete_all()
     return {"message": "All documents deleted successfully"}
 
 
-@router.post("/v1/index_documents/llama-hub-loader")
+@router.post("/index_documents/llama-hub-loader")
 async def load_data(request: DataLoaderRequest):
     # TODO: extract document metadata from request?
 
@@ -108,7 +108,7 @@ async def load_data(request: DataLoaderRequest):
     return {"documents": await DataIndex("n/a").index(documents, extract_importance=False)}
 
 
-@router.post("/v1/index_documents/chat-processor")
+@router.post("/index_documents/chat-processor")
 async def process_chat_files(
         character_name: str,
         files: List[UploadFile] = File(..., description="Upload chat files here."),

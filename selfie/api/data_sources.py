@@ -18,12 +18,12 @@ class DataLoaderRequest(BaseModel):
     load_data_kwargs: Optional[Dict[str, Any]] = {}
 
 
-@router.get("/v1/data-sources")
+@router.get("/data-sources")
 async def get_data_sources():
     return DataManager().get_data_sources()
 
 
-@router.post("/v1/data-sources")
+@router.post("/data-sources")
 async def add_data_source(request: DataLoaderRequest):
     return model_to_dict(DataManager().add_data_source(
         request.name,
@@ -35,18 +35,18 @@ async def add_data_source(request: DataLoaderRequest):
     ))
 
 
-@router.delete("/v1/data-sources/{source_id}")
+@router.delete("/data-sources/{source_id}")
 async def delete_data_source(source_id: int, delete_documents: bool = True, delete_indexed_data: bool = True):
     await DataManager().remove_data_source(source_id, delete_documents, delete_indexed_data)
     return {"message": "Data source removed successfully"}
 
 
-@router.post("/v1/data-sources/{source_id}/scan")
+@router.post("/data-sources/{source_id}/scan")
 async def scan_data_sources(source_id: int):
     return DataManager().scan_data_sources([source_id])
 
 
-@router.post("/v1/data-sources/{source_id}/index")
+@router.post("/data-sources/{source_id}/index")
 async def index_data_source(source_id: int):
     manager = DataManager()
     data_source = manager.get_data_source(source_id)

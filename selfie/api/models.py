@@ -4,8 +4,8 @@ from huggingface_hub import scan_cache_dir
 router = APIRouter()
 
 
-@router.get("/v1/memory/v1/models")
-@router.get("/v1/models")
+@router.get("/memory/models")
+@router.get("/models")
 async def get_models():
     hf_cache_info = scan_cache_dir()
     models = []

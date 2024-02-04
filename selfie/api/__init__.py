@@ -1,6 +1,6 @@
 import os
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 import logging
@@ -18,7 +18,12 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "*",
+        "http://localhost",
+        "http://localhost:3000",
+        "http://localhost:8081",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -30,11 +35,11 @@ static_files_dir = os.path.join(current_file_dir, "../web")
 app.mount("/static", StaticFiles(directory=static_files_dir), name="static")
 
 
-app.include_router(completions_router)
-app.include_router(data_sources_router)
-app.include_router(documents_router)
-app.include_router(index_documents_router)
-app.include_router(models_router)
+app.include_router(completions_router, prefix="/v1")
+app.include_router(data_sources_router, prefix="/v1")
+app.include_router(documents_router, prefix="/v1")
+app.include_router(index_documents_router, prefix="/v1")
+app.include_router(models_router, prefix="/v1")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -43,3 +48,17 @@ async def serve_index_html():
     index_html_path = os.path.join(static_files_dir, "index.html")
     with open(index_html_path, "r") as f:
         return HTMLResponse(content=f.read())
+
+
+@app.get("/{full_path:path}", include_in_schema=False)
+async def serve_spa_or_static(request: Request, full_path: str):
+    if full_path.startswith("api/v1") or full_path.startswith("docs"):  # Skip API routes
+        return
+
+    possible_path = os.path.join(static_files_dir, full_path)
+    if os.path.isfile(possible_path):
+        # Serve static file if it exists
+        return FileResponse(possible_path)
+    else:
+        # Serve index.html for SPA routing
+        return FileResponse(os.path.join(static_files_dir, "index.html"))

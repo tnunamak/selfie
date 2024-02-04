@@ -13,7 +13,7 @@ export const metadata: Metadata = {
   description: 'Welcome to Next.js',
 }
 
-export default function Layout({ children }) {
+export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <html>
     <body>

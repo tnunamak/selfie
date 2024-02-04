@@ -4,9 +4,36 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {ChevronDownIcon, ChevronUpIcon} from "@heroicons/react/20/solid";
 import CodeSnippet from "@/app/components/CodeSnippet";
 
+interface Document {
+  id: string
+  metadata: {
+    [key: string]: any
+  }
+  is_indexed: boolean
+}
+
+interface Documents {
+  [sourceId: string]: Document[]
+}
+
+interface DataSource {
+  id: string;
+  name: string;
+  loader_module: string;
+  config: {
+    constructor_args: any[];
+    constructor_kwargs: {
+      input_dir: string;
+      recursive: boolean;
+    };
+    load_data_args: any[];
+    load_data_kwargs: any;
+  };
+}
+
 const SelfieManager = () => {
-  const [dataSources, setDataSources] = useState([]);
-  const [documents, setDocuments] = useState({});
+  const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [documents, setDocuments] = useState<Documents>({});
   const [selectedDocuments, setSelectedDocuments] = useState(new Set());
   const [isChat, setIsChat] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -16,17 +43,15 @@ const SelfieManager = () => {
   const [isTaskError, setIsTaskError] = useState(false);
 
   useEffect(() => {
-    console.log("USE EFFECT")
     fetchDataSources();
   }, []);
 
   const fetchDataSources = async () => {
     try {
-      console.log("FETCHING DATA SOURCES")
       const response = await fetch('http://localhost:8181/v1/data-sources');
       const data = await response.json();
       setDataSources(data);
-      data.forEach(dataSource => fetchDocuments(dataSource.id));
+      data.forEach((dataSource: any) => fetchDocuments(dataSource.id));
     } catch (error) {
       console.error('Error fetching data sources:', error);
     } finally {
@@ -34,7 +59,7 @@ const SelfieManager = () => {
     }
   };
 
-  const fetchDocuments = async (sourceId) => {
+  const fetchDocuments = async (sourceId: string) => {
     try {
       const response = await fetch(`http://localhost:8181/v1/documents?source_id=${sourceId}`);
       const docs = await response.json();
@@ -44,12 +69,12 @@ const SelfieManager = () => {
     }
   };
 
-  const handleScan = async (sourceId) => {
+  const handleScan = async (sourceId: string) => {
     await fetch(`http://localhost:8181/v1/data-sources/${sourceId}/scan`, { method: 'POST' });
     await fetchDocuments(sourceId);
   };
 
-  const handleIndex = async (sourceId) => {
+  const handleIndex = async (sourceId: string) => {
     await fetch(`http://localhost:8181/v1/data-sources/${sourceId}/index`, { method: 'POST' });
   };
 
@@ -80,7 +105,7 @@ const SelfieManager = () => {
   // };
 
 
-  const toggleDocumentSelection = (docId) => {
+  const toggleDocumentSelection = (docId: string) => {
     setSelectedDocuments(prevSelectedDocuments => {
       const newSelection = new Set(prevSelectedDocuments);
       if (newSelection.has(docId)) {
@@ -97,24 +122,32 @@ const SelfieManager = () => {
     return firstDoc ? Object.keys(firstDoc.metadata) : [];
   }, [documents, dataSources]);
 
-  const toTitleCase = (str) => {
+  const toTitleCase = (str: string) => {
     return str.replace(/_/g, ' ').replace(/\b(\w)/g, char => char.toUpperCase());
   };
 
-  const isNumeric = (str) => {
+  const isNumeric = (str: any) => {
     if (typeof str == "string") return false;
     return !isNaN(str) && !isNaN(parseFloat(str));
   };
 
-  const isDateString = (str) => {
+  const isDateString = (str: any) => {
     return typeof str === 'string' && !isNaN(Date.parse(str));
   };
 
-  const formatDate = (dateStr) => {
+  const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' });
   };
 
-  const TableRow = React.memo(({ doc, dataSource, columnNames, onToggle, isSelected = false }) => {
+  interface TableRowProps {
+    doc: Document;
+    dataSource: DataSource;
+    columnNames: string[];
+    onToggle: (docId: string) => void;
+    isSelected?: boolean; // Optional prop with default value
+  }
+
+  const TableRow = React.memo<TableRowProps>(({ doc, dataSource, columnNames, onToggle, isSelected = false }) => {
     // Local state for managing selection status of this row
     const [selected, setSelected] = useState(isSelected);
 
@@ -127,8 +160,6 @@ const SelfieManager = () => {
       setSelected(!selected); // Toggle local state
       onToggle(doc.id);       // Update global state
     };
-
-    console.log(doc)
 
     return (
       <tr className={`text-xs ${selected ? 'bg-base-200' : ''}`}>
@@ -177,6 +208,8 @@ const SelfieManager = () => {
     );
   });
 
+  TableRow.displayName = 'TableRow';
+
   const [selectAll, setSelectAll] = useState(false);
 
   const handleToggleSelectAll = () => {
@@ -188,16 +221,16 @@ const SelfieManager = () => {
       setSelectedDocuments(new Set());
     }
   };
-  const [selectedDirectory, setSelectedDirectory] = useState(null);
+  const [selectedDirectory, setSelectedDirectory] = useState<string | undefined>();
   const [dataSourceName, setDataSourceName] = useState('');
 
-  const handleDataSourceNameChange = (event) => {
+  const handleDataSourceNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setDataSourceName(event.target.value);
   };
 
-  const handleDirectoryChange = (event) => {
+  const handleDirectoryChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
-    const path = files[0]?.webkitRelativePath.split('/')[0]; // Get directory name
+    const path = files?.[0]?.webkitRelativePath.split('/')[0]; // Get directory name
     console.log(files)
     console.log('Selected directory:', path);
     setSelectedDirectory(path);
@@ -239,7 +272,7 @@ const SelfieManager = () => {
     }
   };
 
-  const handleIndexDocument = async (documentId, deleteInstead = false) => {
+  const handleIndexDocument = async (documentId: string, deleteInstead = false) => {
     await handleIndexSelected([documentId], deleteInstead);
   };
 
@@ -253,7 +286,7 @@ const SelfieManager = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          document_ids: documentIds.map(id => id.toString()),
+          document_ids: documentIds.map((id: any) => id.toString()),
           ...(deleteInstead ? {} : {is_chat: isChat})
         })
       });
@@ -277,10 +310,10 @@ const SelfieManager = () => {
 
 
 
-  const [sortField, setSortField] = useState(null);
+  const [sortField, setSortField] = useState<string | undefined>();
   const [sortDirection, setSortDirection] = useState('asc');
 
-  const handleHeaderClick = (fieldName) => {
+  const handleHeaderClick = (fieldName: string) => {
     if (sortField === fieldName) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
@@ -289,7 +322,7 @@ const SelfieManager = () => {
     }
   };
 
-  const getSortableValue = (value) => {
+  const getSortableValue = (value: any) => {
     if (isDateString(value)) {
       return new Date(value).getTime();
     } else if (isNumeric(value)) {
@@ -301,7 +334,7 @@ const SelfieManager = () => {
   const sortedDocuments = useMemo(() => {
     if (!sortField) return documents;
 
-    return Object.keys(documents).reduce((sortedDocs, key) => {
+    return Object.keys(documents).reduce((sortedDocs: any, key: string) => {
       sortedDocs[key] = [...documents[key]].sort((a, b) => {
         const aValue = getSortableValue(a.metadata[sortField]);
         const bValue = getSortableValue(b.metadata[sortField]);
@@ -316,7 +349,7 @@ const SelfieManager = () => {
     }, {});
   }, [documents, sortField, sortDirection]);
 
-  const handleDeleteDataSource = async (dataSourceId) => {
+  const handleDeleteDataSource = async (dataSourceId: string) => {
     try {
       const response = await fetch(`http://localhost:8181/v1/data-sources/${dataSourceId}`, {
         method: 'DELETE'
@@ -378,12 +411,11 @@ console.log(chatCompletion.choices[0].message.content);
         </p>
         <p>
           Explore and test the full set of API features for indexed data on <a className="link"
-                                                                               href="http://localhost:8181/docs"
-                                                                               target="_blank" rel="noreferrer">the
+                                                                               href="http://localhost:8181/docs">the
           documentation page</a>.
           For a quick start, try the <a className="link"
                                         href="http://localhost:8181/docs#/default/get_index_documents_summary_v1_index_documents_summary_get"
-                                        target="_blank" rel="noreferrer">Summary API</a>.
+                                        >Summary API</a>.
         </p>
       </section>
       <h1 className="text-4xl font-bold mb-4">Source Directories</h1>
@@ -502,7 +534,7 @@ console.log(chatCompletion.choices[0].message.content);
           </thead>
           <tbody>
           {dataSources.flatMap(dataSource =>
-            sortedDocuments[dataSource.id]?.map(doc => (
+            sortedDocuments[dataSource.id]?.map((doc: Document) => (
               <TableRow
                 key={doc.id}
                 doc={doc}
@@ -520,5 +552,7 @@ console.log(chatCompletion.choices[0].message.content);
     </div>
   );
 };
+
+SelfieManager.displayName = 'SelfieManager';
 
 export default SelfieManager;
