@@ -18,7 +18,6 @@ from typing import List, Dict, Any, Optional, Callable
 
 from selfie.config import default_database_storage_root, default_db_name
 from selfie.embeddings import DataIndex
-from selfie.embeddings.test import TestDataIndex
 from selfie.embeddings.document_types import Document
 
 import logging

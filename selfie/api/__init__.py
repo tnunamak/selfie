@@ -1,4 +1,6 @@
 import os
+import sys
+
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -29,8 +31,17 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-current_file_dir = os.path.dirname(os.path.realpath(__file__))
-static_files_dir = os.path.join(current_file_dir, "../web")
+if getattr(sys, 'frozen', False):
+    # Running in a PyInstaller bundle
+    bundle_dir = os.path.join(
+        sys._MEIPASS, "selfie"
+    )
+else:
+    # Running in a normal Python environment
+    bundle_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..')
+
+static_files_dir = os.path.join(bundle_dir, "web")
+
 
 app.mount("/static", StaticFiles(directory=static_files_dir), name="static")
 

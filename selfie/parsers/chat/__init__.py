@@ -20,7 +20,7 @@ if getattr(sys, "frozen", False):
     # If so, the base path is the path to the _MEIPASS folder
     base_path = sys._MEIPASS
     blacklist_file_path = os.path.join(
-        base_path, "selfie/data_processing/parsers/chat/blacklist_patterns.yaml"
+        base_path, "selfie/parsers/chat/blacklist_patterns.yaml"
     )
 else:
     # If not, the base path is the root of your project
