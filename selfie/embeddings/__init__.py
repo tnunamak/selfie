@@ -1,11 +1,14 @@
+import asyncio
+import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import os
 import shutil
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Coroutine, Callable
 
 import humanize
 
-from selfie.config import default_storage_root, default_db_name, default_local_model
+from selfie.config import default_embeddings_storage_root, default_db_name, default_local_model
 from selfie.data_generators.chat_training_data import (
     ChatTrainingDataGenerator,
 )
@@ -32,40 +35,113 @@ llm = LLM(
 
 
 class DataIndex:
-    def __init__(self, character_name, storage_path: str = default_storage_root, use_local_llm=True, completion=None):
-        logger.info("Initializing DataIndex")
-        self.storage_path = os.path.join(storage_path, "index")
+    _singleton = None
 
-        async def completion_async(prompt):
-            return llm(prompt)
+    def __new__(cls, *args, **kwargs):
+        if not cls._singleton:
+            cls._singleton = super(DataIndex, cls).__new__(cls)
+        return cls._singleton
 
-        self.completion = completion or completion_async
+    def __init__(self, character_name, storage_path: str = default_embeddings_storage_root, use_local_llm=True, completion=None):
+        if not hasattr(self, 'is_initialized'):
+            logger.info("Initializing DataIndex")
+            self.storage_path = os.path.join(storage_path, "index")
+            os.makedirs(storage_path, exist_ok=True)
 
-        self.character_name = character_name
-        self.embeddings = Embeddings(
-            path="sentence-transformers/all-MiniLM-L6-v2",
-            # TODO: may not work on Windows
-            # https://docs.sqlalchemy.org/en/20/core/engines.html#sqlite
-            content=f"sqlite:///{os.path.join(storage_path, default_db_name)}"
-        )
-        self.token_used = {
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "total_tokens": 0,
-        }
-        self.gpt3_call_count = 0
-        self.importance_scorer = ImportanceScorer(
-            score_weight=1, use_local_llm=use_local_llm
-        )
-        self.recency_scorer = RecencyScorer(score_weight=1)
-        self.relevance_scorer = RelevanceScorer(score_weight=1)
+            async def completion_async(prompt):
+                return llm(prompt)
 
-        if os.path.exists(os.path.join(self.storage_path, "embeddings")):
-            self.embeddings.load(self.storage_path)
-        else:
-            logger.info(
-                "Embeddings file not found, starting with a new embeddings index."
+            self.completion = completion or completion_async
+
+            self.character_name = character_name
+            self.embeddings = Embeddings(
+                path="sentence-transformers/all-MiniLM-L6-v2",
+                sqlite={"wal": True},
+                # For now, sqlite w/the default driver is the only way to use WAL.
+                content=True
+                # TODO: may not work on Windows
+                # https://docs.sqlalchemy.org/en/20/core/engines.html#sqlite
+                # content=f"sqlite:///{os.path.join(storage_path, default_db_name)}"
             )
+            self.token_used = {
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+            }
+            self.gpt3_call_count = 0
+            self.importance_scorer = ImportanceScorer(
+                score_weight=1, use_local_llm=use_local_llm
+            )
+            self.recency_scorer = RecencyScorer(score_weight=1)
+            self.relevance_scorer = RelevanceScorer(score_weight=1)
+
+            if os.path.exists(os.path.join(self.storage_path, "embeddings")):
+                self.embeddings.load(self.storage_path)
+            else:
+                logger.info("Embeddings file not found, starting with a new embeddings index.")
+                # self.embeddings.index(documents=[])
+                # self.embeddings.save(self.storage_path)
+
+            # Create a queue for database write operations
+            self.db_write_queue = asyncio.Queue()
+            # Start the background task to process database write operations
+            asyncio.create_task(self.process_db_write_queue())
+            self.executor = ThreadPoolExecutor()
+
+            self.is_initialized = True
+
+    async def close(self):
+        self.executor.shutdown(wait=True)
+
+    def has_data(self):
+        return os.path.exists(f"{self.storage_path}/embeddings")
+
+    async def process_db_write_queue(self):
+        while True:
+            task, future = await self.db_write_queue.get()  # Expecting a tuple of (task, future)
+            try:
+                if asyncio.iscoroutinefunction(task) or isinstance(task, Coroutine):
+                    # TODO: one of these is correct, figure it out
+                    # result = await task()  # Await coroutine and capture result
+                    result = await task  # Await coroutine and capture result
+                else:
+                    loop = asyncio.get_event_loop()
+                    result = await loop.run_in_executor(None, task)  # Execute sync function in executor and capture result
+                future.set_result(result)  # Set the result on the future
+            except Exception as e:
+                future.set_exception(e)  # Set the exception on the future if something goes wrong
+            finally:
+                self.db_write_queue.task_done()
+
+    async def enqueue_task(self, task: Callable[..., Any], *args, **kwargs) -> asyncio.Future:
+        """Enqueue a task that can be either synchronous or asynchronous."""
+        future = asyncio.Future()
+        if asyncio.iscoroutinefunction(task) or isinstance(task, Coroutine):
+            # Prepare coroutine for execution; args, kwargs are applied
+            wrapped_task = asyncio.ensure_future(task(*args, **kwargs))
+        else:
+            # Wrap synchronous function and its arguments in a lambda for deferred execution
+            wrapped_task = lambda: task(*args, **kwargs)
+        await self.db_write_queue.put((wrapped_task, future))
+        return future
+
+    async def enqueue_upsert(self, documents: List[Dict[str, Any]] | List[tuple[int, Dict[str, Any]]]):
+        """Enqueue an upsert operation."""
+        return await self.enqueue_task(
+            lambda: (result := self.embeddings.upsert(documents), self.embeddings.save(self.storage_path), result)[2]
+        )
+
+    async def enqueue_index(self, documents: List[Dict[str, Any]] | List[tuple[int, Dict[str, Any]]]):
+        """Enqueue an index operation."""
+        return await self.enqueue_task(
+            lambda: (result := self.embeddings.index(documents), self.embeddings.save(self.storage_path), result)[2]
+        )
+
+    async def enqueue_delete(self, ids: List[int]):
+        """Enqueue a delete operation."""
+        return await self.enqueue_task(
+            lambda: (result := self.embeddings.delete(ids), self.embeddings.save(self.storage_path), result)[2]
+        )
 
     @staticmethod
     def map_share_gpt_data(
@@ -87,7 +163,7 @@ class DataIndex:
             ).strip()
 
             document = Document(
-                content=formatted_conversation,
+                text=formatted_conversation,
                 timestamp=conv[0].timestamp,
                 source=source,
             )
@@ -126,7 +202,7 @@ class DataIndex:
             return None
         document_summary = "\n\n".join(
             [
-                f"{humanize.naturaltime(datetime.now(timezone.utc) - document.timestamp)}\n{document.content}"
+                f"{humanize.naturaltime(datetime.now(timezone.utc) - document.timestamp)}\n{document.text}"
                 for document in documents
             ]
         )
@@ -154,10 +230,7 @@ class DataIndex:
 
     def map_document(self, document: Document, extract_importance=True):
         return {
-            **({"id": document.id} if document.id is not None else {}),
-            "timestamp": document.timestamp.replace(tzinfo=timezone.utc).isoformat(),
-            "text": document.content,
-            "source": document.source,
+            **document.to_dict(),
             **(
                 {
                     "importance": document.importance
@@ -166,13 +239,41 @@ class DataIndex:
 
                 } if extract_importance else {}
             ),
-            "created_timestamp": document.created_timestamp.replace(tzinfo=timezone.utc).isoformat(),
-            "updated_timestamp": document.updated_timestamp.replace(tzinfo=timezone.utc).isoformat(),
-            **({"source_document_id": document.source_document_id} if document.source_document_id is not None else {})
         }
 
+    def _query(
+            self,
+            where: str = None,
+            parameters: Dict[str, Any] = None,
+            limit: int = None,
+            offset: int = None,
+            order_by: str = None,
+            group_by: str = None,
+    ) -> List[Dict[str, Any]]:
+        parameters = parameters or {}
+        query_components = [
+            f"SELECT score, {', '.join(Document.model_fields.keys())} FROM txtai"
+        ]
+
+        if where:
+            query_components.append(f"WHERE {where}")
+
+        if group_by:
+            query_components.append(f"GROUP BY {group_by}")
+
+        if order_by:
+            query_components.append(f"ORDER BY {order_by}")
+
+        if offset is not None:
+            query_components.append("OFFSET :offset")
+            parameters["offset"] = offset
+
+        print(f"Query looks like {' '.join(query_components)}")
+        return self.embeddings.search(" ".join(query_components), parameters=parameters, limit=limit)
+
     async def index(self, documents: List[Document], extract_importance=True, upsert=False):
-        logger.info(f"Indexing {len(documents)} documents")
+        start_time = time.time()
+        logger.info(f"Indexing {len(documents)} documents started at {start_time}")
 
         documents = [
             await self.find_existing_document(document) or document for document in documents
@@ -181,7 +282,12 @@ class DataIndex:
         with_importance = [
             self.map_document(document, extract_importance) for document in documents
         ]
-        self.embeddings.upsert(with_importance)
+
+        logger.info("Starting upsert operation")
+        # self.embeddings.upsert(with_importance)
+        await self.enqueue_upsert(with_importance)
+        logger.info("Upsert operation completed")
+
         self.embeddings.save(self.storage_path)
 
         return with_importance
@@ -203,18 +309,15 @@ class DataIndex:
         if min_score is None:
             min_score = 0.4
 
-        if not os.path.exists(self.storage_path):
-            return {"documents": [], "summary": "No documents found."}
+        if not self.has_data():
+            return {"documents": [], "summary": "No documents found.", "mean_score": 0}
         self.embeddings.load(self.storage_path)
 
-        query = f"SELECT score, id, timestamp, text, importance, source, updated_timestamp, source_document_id FROM txtai WHERE similar(:topic)"
-        results = self.embeddings.search(
-            query, limit=limit, parameters={"topic": topic}
-        )
+        results = self._query(where="similar(:topic)", parameters={"topic": topic}, limit=limit)
         documents_list: List[ScoredDocument] = []
         for result in results:
             document = Document(
-                content=result["text"],
+                text=result["text"],
                 timestamp=result["timestamp"],
                 importance=result["importance"],
                 source=result["source"],
@@ -264,70 +367,91 @@ class DataIndex:
     # TODO: Fix this
     def delete_all(self):
         logger.info("Deleting all documents")
-        if os.path.exists(self.storage_path):
-            shutil.rmtree(self.storage_path)
+        if self.has_data():
+            shutil.rmtree(f"{self.storage_path}/embeddings")
             logger.info(f"Deleted storage path: {self.storage_path}")
-            self.embeddings.index(documents=[])
         else:
             logger.info("Storage path not found, nothing to delete.")
 
-    def delete_document(self, document_id):
-        self.embeddings.delete([document_id])
-        self.embeddings.save(self.storage_path)
+    async def delete_documents(self, document_ids):
+        await self.enqueue_delete(document_ids)
+        deleted_ids = document_ids # TODO: this is a hack because enqueue_delete doesn't return anything
         # TODO: determine whether anything was actually deleted
+        return deleted_ids
 
-    def update_document(self, document_id, updated_document, extract_importance=True):
-        self.embeddings.upsert(
+    async def delete_document(self, document_id):
+        return await self.delete_documents([document_id])
+
+    async def delete_documents_with_source_documents(self, source_document_ids):
+        results = self._query(where=f"source_document_id IN ({', '.join([str(doc_id) for doc_id in source_document_ids])})", limit=999999)
+        await self.enqueue_delete([result['id'] for result in results])
+        deleted_ids = [result['id'] for result in results] # TODO: this is a hack because enqueue_delete doesn't return anything
+        return deleted_ids
+
+    async def update_document(self, document_id, updated_document, extract_importance=True):
+        await self.enqueue_upsert(
             [(document_id, self.map_document(updated_document, extract_importance))]
         )
-        self.embeddings.save(self.storage_path)
 
     def get_document_count(self):
-        if not os.path.exists(self.storage_path):
+        if not self.has_data():
             return 0
 
-        self.embeddings.load(self.storage_path)
         result = self.embeddings.search("SELECT count(*) FROM txtai")
         return result[0]["count(*)"]
 
     async def get_document(self, document_id):
-        if not os.path.exists(self.storage_path):
-            return None  # TODO: raise exception
-        self.embeddings.load(self.storage_path)
-        query = f"SELECT id, timestamp, text, importance, source, updated_timestamp, source_document_id source FROM txtai WHERE id = {document_id}"
-        result = self.embeddings.search(query)
+        if not self.has_data():
+            return None  # TODO: raise exception?
+        result = self._query(where=f"id = :id", parameters={"id": document_id})
         return result[0] if result else None
 
+    def get_documents_with_source_document(self, source_document_id):
+        return self._query(where="source_document_id = :source_document_id", parameters={"source_document_id": source_document_id}) if self.has_data() else []
+
+    def get_one_document_per_source_document(self, source_document_ids: Optional[List[str]] = None):
+        if not self.has_data():
+            return []
+
+        if source_document_ids:
+            # sources_placeholder = ', '.join(['?' for _ in sources])
+            where_in_clause = f"source_document_id IN ({', '.join(source_document_ids)})"
+        else:
+            where_in_clause = ""
+
+        # Bad queries
+        # query = f"SELECT id, timestamp, text, importance, source, updated_timestamp, source_document_id FROM txtai WHERE source_document_id IS NOT NULL AND source_document_id IN ({', '.join(sources)}) AND id IN (SELECT id FROM txtai WHERE source_document_id IS NOT NULL GROUP BY source_document_id HAVING max(updated_timestamp))"
+        # query = f"SELECT id, timestamp, text, importance, source, updated_timestamp, source_document_id FROM txtai WHERE source_document_id IS NOT NULL AND source_document_id IN ({', '.join(sources)}) GROUP BY source_document_id HAVING max(updated_timestamp) LIMIT 999999"
+        # query = f"SELECT id, source_document_id FROM txtai {where_in_clause} GROUP BY source_document_id LIMIT 999999"
+        # return self.embeddings.search(query)
+        return self._query(where=where_in_clause, group_by="source_document_id", limit=999999)
+
     async def find_existing_document(self, document: Document):
-        if not os.path.exists(self.storage_path):
+        if not self.has_data():
             return None
-        self.embeddings.load(self.storage_path)
-        query = f"SELECT id, timestamp, text, importance, source, created_timestamp, updated_timestamp, source_document_id FROM txtai WHERE text = :text AND timestamp = :timestamp AND source = :source AND source_document_id = :source_document_id"
-        result = self.embeddings.search(
-            query,
+        result = self._query(
+            where="text = :text AND timestamp = :timestamp AND source = :source AND source_document_id = :source_document_id",
             parameters={
-                "text": document.content,
+                "text": document.text,
                 "timestamp": document.timestamp.isoformat(),
                 "source": document.source,
                 "source_document_id": document.source_document_id,
             },
         )
+
         if len(result) > 1:
             logger.warning(f"Found {len(result)} documents matching {document})")
         if len(result) > 0:
             logger.debug(f"Found an existing document matching")
 
             # TODO: This is kinda horrible
-            result[0]['content'] = result[0]['text']
-            del result[0]['text']
             result[0]['id'] = int(result[0]['id'])
             result[0]['source_document_id'] = int(result[0]['source_document_id'])
 
         return Document(**result[0]) if result else None
 
     async def get_documents(self, offset=0, limit=10):
-        if not os.path.exists(self.storage_path):
+        if not self.has_data():
             return []
-        self.embeddings.load(self.storage_path)
-        query = f"SELECT id, timestamp, text, importance, source, updated_timestamp, source_document_id FROM txtai ORDER BY timestamp DESC LIMIT {limit} OFFSET {offset}"
-        return self.embeddings.search(query)
+
+        return self._query(limit=limit, offset=offset, order_by="timestamp DESC")

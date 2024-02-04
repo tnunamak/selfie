@@ -19,7 +19,7 @@ class ImportanceScorer(BaseScorer):
         poignant (e.g., a break up, college acceptance), rate the likely poignancy of the following document.
         Document: {document}
         """.format(
-            document=document.content
+            document=document.text
         )
 
         rate_document = {

@@ -1,11 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from pydantic import BaseModel, Field, model_validator
 
 
 class Document(BaseModel):
     id: Optional[int] = Field(None, description="ID of the document, auto-generated")
-    content: str = Field(..., description="Formatted conversation or content of the document")
+    text: str = Field(..., description="Formatted conversation or content of the document")
     source: str = Field(..., description="Source of the document, e.g., API")
     importance: Optional[float] = Field(None, description="Importance score of the document, [0, 1]")
     timestamp: datetime = Field(..., description="The time that the event happened at, e.g. the time a message was sent")
@@ -16,9 +16,9 @@ class Document(BaseModel):
 
     def to_dict(self, *args, **kwargs):
         d = super().model_dump(*args, **kwargs)
-        d['timestamp'] = self.timestamp.isoformat() if self.timestamp else None
-        d['created_timestamp'] = self.created_timestamp.isoformat() if self.created_timestamp else None
-        d['updated_timestamp'] = self.updated_timestamp.isoformat() if self.updated_timestamp else None
+        d['timestamp'] = self.timestamp.replace(tzinfo=timezone.utc).isoformat() if self.timestamp else None
+        d['created_timestamp'] = self.created_timestamp.replace(tzinfo=timezone.utc).isoformat() if self.created_timestamp else None
+        d['updated_timestamp'] = self.updated_timestamp.replace(tzinfo=timezone.utc).isoformat() if self.updated_timestamp else None
         return d
 
     class Config:

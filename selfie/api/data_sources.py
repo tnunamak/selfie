@@ -1,6 +1,7 @@
 from typing import Optional, Any, List, Dict
 
 from fastapi import APIRouter, HTTPException
+from playhouse.shortcuts import model_to_dict
 from pydantic import BaseModel
 
 from selfie.database import DataManager
@@ -24,20 +25,19 @@ async def get_data_sources():
 
 @router.post("/v1/data-sources")
 async def add_data_source(request: DataLoaderRequest):
-    source_id = DataManager().add_data_source(
+    return model_to_dict(DataManager().add_data_source(
         request.name,
         request.loader_module,
         request.constructor_args,
         request.constructor_kwargs,
         request.load_data_args,
         request.load_data_kwargs,
-    )
-    return {"source_id": source_id}
+    ))
 
 
 @router.delete("/v1/data-sources/{source_id}")
-async def delete_data_source(source_id: int):
-    DataManager().remove_data_source(source_id)
+async def delete_data_source(source_id: int, delete_documents: bool = True, delete_indexed_data: bool = True):
+    await DataManager().remove_data_source(source_id, delete_documents, delete_indexed_data)
     return {"message": "Data source removed successfully"}
 
 

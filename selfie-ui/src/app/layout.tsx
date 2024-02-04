@@ -20,7 +20,7 @@ export default function Layout({ children }) {
     <div className="container mx-auto">
       <Header/>
       <div className="flex my-4">
-        <Sidebar/>
+        {/*<Sidebar/>*/}
         <main className="flex-1 p-4">
           {children}
         </main>

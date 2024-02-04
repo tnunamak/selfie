@@ -42,7 +42,7 @@ async def get_index_document(document_id: int):
 
 @router.put("/v1/index_documents/{document_id}")
 async def update_index_document(document_id: int, document: Document):
-    DataIndex("n/a").update_document(document_id, document)
+    await DataIndex("n/a").update_document(document_id, document)
     return {"message": "Document updated successfully"}
 
 
@@ -93,7 +93,7 @@ async def load_data(request: DataLoaderRequest):
     for idx, text_chunk in enumerate(text_chunks):
         src_doc = documents[doc_idxs[idx]]
         document = Document(
-            content=text_chunk,
+            text=text_chunk,
             source=request.loader_module,
             # importance=0.0,
             # timestamp=datetime.strptime(src_doc.metadata['last_modified'], "%Y-%m-%d"),

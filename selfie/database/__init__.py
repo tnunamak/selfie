@@ -16,8 +16,9 @@ import json
 import importlib
 from typing import List, Dict, Any, Optional, Callable
 
-from selfie.config import default_storage_root, default_db_name
+from selfie.config import default_database_storage_root, default_db_name
 from selfie.embeddings import DataIndex
+from selfie.embeddings.test import TestDataIndex
 from selfie.embeddings.document_types import Document
 
 import logging
@@ -52,7 +53,9 @@ class SelfieDocument(BaseModel):
 
 
 class DataManager:
-    def __init__(self, storage_path: str = default_storage_root):
+    def __init__(self, storage_path: str = default_database_storage_root):
+        os.makedirs(storage_path, exist_ok=True)
+
         self.db = SqliteDatabase(os.path.join(storage_path, default_db_name))
         database_proxy.initialize(self.db)
         self.db.connect()
@@ -77,8 +80,35 @@ class DataManager:
             name=name, loader_module=loader_module, config=json.dumps(config)
         )
 
-    def remove_data_source(self, source_id: int):
-        DataSource.get_by_id(source_id).delete_instance()
+    # def remove_data_source(self, source_id: int):
+    #     DataSource.get_by_id(source_id).delete_instance()
+
+    async def remove_document(self, document_id: int, delete_indexed_data: bool = True):
+        with self.db.atomic():
+            document = SelfieDocument.get_by_id(document_id)
+            if document is None:
+                raise ValueError(f"No document found with ID {document_id}")
+
+            if delete_indexed_data:
+                index = DataIndex("n/a")
+                await index.delete_documents_with_source_documents([document.source_id])
+
+            document.delete_instance()
+
+    async def remove_data_source(self, source_id: int, delete_documents: bool = True, delete_indexed_data: bool = True):
+        data_source = self.get_data_source(source_id)
+        if data_source is None:
+            raise ValueError(f"No data source found with ID {source_id}")
+
+        if delete_indexed_data:
+            source_document_ids = [doc.id for doc in SelfieDocument.select().where(SelfieDocument.source == source_id)]
+            await DataIndex("n/a").delete_documents_with_source_documents(source_document_ids)
+
+        with self.db.atomic():
+            if delete_documents:
+                SelfieDocument.delete().where(SelfieDocument.source == source_id).execute()
+
+            DataSource.delete().where(DataSource.id == source_id).execute()
 
     def scan_data_sources(self, source_ids: List[int]) -> Dict[str, Any]:
         changes = {}
@@ -152,7 +182,7 @@ class DataManager:
 
         for text_chunk in text_parser.split_text(selfie_document.text):
             documents.append(Document(
-                content=text_chunk,
+                text=text_chunk,
                 source=selfie_document.source,
                 timestamp=DataManager._extract_timestamp(selfie_document),
                 source_document_id=selfie_document.id,
@@ -193,9 +223,12 @@ class DataManager:
         else:
             documents = SelfieDocument.select()
 
+        one_indexed_document_per_source = DataIndex("n/a").get_one_document_per_source_document([str(document.id) for document in documents])
+        indexed_documents = list(set([doc['source_document_id'] for doc in one_indexed_document_per_source]))
         return [
-            {"id": doc.id, "metadata": json.loads(doc.metadata)} for doc in documents
-        ]  # Example usage
+            # TODO: for some reason, initializing Embeddings in DataIndex with the SQLAlchemy driver returns indexed_documents as strings, not ints (requires str(doc.id)).
+            {"id": doc.id, "metadata": json.loads(doc.metadata), "is_indexed": doc.id in indexed_documents} for doc in documents
+        ]
 
     def get_document(self, document_id: str):
         return SelfieDocument.get_by_id(document_id)

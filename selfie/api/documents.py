@@ -10,6 +10,10 @@ from selfie.embeddings import DataIndex
 router = APIRouter()
 
 
+class UnindexDocumentsRequest(BaseModel):
+    document_ids: List[str] = []
+
+
 class IndexDocumentsRequest(BaseModel):
     is_chat: bool = False
     document_ids: List[str] = []
@@ -20,8 +24,20 @@ async def get_documents(source_id: Optional[int] = None):
     return DataManager().get_documents(source_id)
 
 
+@router.delete("/v1/documents/{document_id}")
+async def delete_data_source(document_id: int, delete_indexed_data: bool = True):
+    await DataManager().remove_document(document_id, delete_indexed_data)
+    return {"message": "Document removed successfully"}
+
+
+@router.post("/v1/documents/unindex")
+async def unindex_documents(request: UnindexDocumentsRequest):
+    await DataIndex("n/a").delete_documents_with_source_documents(request.document_ids)
+    return {"message": "Document unindexed successfully"}
+
+
 @router.post("/v1/documents/index")
-async def index_document(request: IndexDocumentsRequest):
+async def index_documents(request: IndexDocumentsRequest):
     is_chat = request.is_chat
     document_ids = request.document_ids
 
