@@ -1,12 +1,15 @@
 # -*- mode: python ; coding: utf-8 -*-
-
 # Run poetry shell, then pyinstaller cli.spec --noconfirm
+
+import site
+site_packages_path = site.getsitepackages()[0]  # Assuming you want the first path
+print(f"Using {site_packages_path} for site_packages")
 
 import os
 a = Analysis(
     ['selfie/__main__.py'],
     debug=True,
-    pathex=[os.path.abspath(SPECPATH)],
+    pathex=[os.path.abspath(SPECPATH), site_packages_path],
     binaries=[],
     datas=[
         ('./selfie/parsers/chat/blacklist_patterns.yaml', 'selfie/parsers/chat/'),
