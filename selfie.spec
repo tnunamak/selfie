@@ -9,13 +9,13 @@ a = Analysis(
     pathex=[os.path.abspath(SPECPATH)],
     binaries=[],
     datas=[
-        ('./selfie/data_processing/parsers/chat/blacklist_patterns.yaml', 'selfie/data_processing/parsers/chat/'),
+        ('./selfie/parsers/chat/blacklist_patterns.yaml', 'selfie/parsers/chat/'),
         ('./selfie/web/', 'selfie/web/'),
     ],
     hiddenimports=[
         'tiktoken_ext',
         'tiktoken_ext.openai_public',
-        'onnxconverter_common',
+        'onnxconverter_common', # Logs say hidden import 'onnxconverter_common' not found
     ],
     hookspath=['./hooks'],
     hooksconfig={},

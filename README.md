@@ -14,22 +14,23 @@ Selfie personalizes text generation, augmenting both local and hosted Large Lang
 
 ## Usage
 
-In the future, pre-built executables will be available. For now, you can run selfie with Python:
+In the future, pre-built executables will be available. For now, you can run selfie with yarn, poetry, and python:
 
-1. `poetry shell`
-2. `poetry install` or `poetry install -E gpu` (to enable GPU devices via transformers). Enable GPU or Metal acceleration via llama.cpp by installing GPU-enabled llama-cpp-python, see Scripts.
-3. `python -m selfie`. The first time you run this, it will download ~4gb of model weights. While you wait, you can go download your whatsapp or google takeout data for the next step. 
+1. `./scripts/build-ui.sh` (requires `yarn`)
+2. `poetry shell`
+3. `poetry install` or `poetry install -E gpu` (to enable GPU devices via transformers). Enable GPU or Metal acceleration via llama.cpp by installing GPU-enabled llama-cpp-python, see Scripts.
+4. `python -m selfie`. The first time you run this, it will download ~4gb of model weights. While you wait, you can go download your whatsapp or google takeout data for the next step. 
 
 This starts a local web server at http://localhost:8181.
 
 ### Recipe: Importing Chat Messages
 
 1. Open http://localhost:8181/docs
-2. Find `POST /v1/memories/chat-processor`
+2. Find `POST /v1/index_documents/chat-processor`
 3. Upload one or more exported chat log files. To get these files, export them from platforms that you use frequently and contain information you want the LLM to know. Exports: [Whatsapp](https://faq.whatsapp.com/1180414079177245/?cms_platform=android) | [Google](https://takeout.google.com/settings/takeout) | [Instagram](https://help.instagram.com/181231772500920) | [Facebook Messenger](https://www.facebook.com/help/messenger-app/713635396288741/?cms_platform=iphone-app&helpref=platform_switcher) | [Telegram](https://www.maketecheasier.com/export-telegram-chat-history/). Ensure you ask permission of the friend who is also in the chat you export. You can also redact their name, messages, and other personal information in later steps. 
 4. Copy, paste, and edit the example parser_configs JSON. Include one configuration object in the list for each file you upload.
 
-![chat-processor.png](selfie/images/chat-processor.png)
+![chat-processor.png](docs/images/chat-processor.png)
 
 Setting `extract_importance` to `true` will give you better query results, but usually causes the import to take a while.
 
@@ -37,13 +38,13 @@ Setting `extract_importance` to `true` will give you better query results, but u
 
 1. Install and run [SillyTavern](https://github.com/SillyTavern/SillyTavern).
 2. Configure a custom chat completion source as  `http://localhost:8181/v1/memory`. You can customize the model by setting API parameters for `method` and `model` in Additional Parameters. \
-![silly-tavern-api.png](selfie/images/silly-tavern-api.png)
+![silly-tavern-api.png](docs/images/silly-tavern-api.png)
 3. Create a character, customize the text generation settings, etc.
 4. Chat with your character to see that it is aware of your data: \
-![silly-tavern-chat.png](selfie/images/silly-tavern-chat.png) \
+![silly-tavern-chat.png](docs/images/silly-tavern-chat.png) \
 
 You can also use target a locally hosted OpenAI-compatible API: \
-![silly-tavern-local-api.png](selfie/images/silly-tavern-local-api.png) \
+![silly-tavern-local-api.png](docs/images/silly-tavern-local-api.png) \
 Note: Note that some OpenAI-compatible APIs do not properly handle SillyTavern's use of multiple system messages and non-alternating user/assistant messages (like [text-generation-webui](https://github.com/oobabooga/text-generation-webui)). A workaround is described [here](https://github.com/SillyTavern/SillyTavern/issues/1722#issuecomment-1902619716).
 
 ## Augmenting Local Models
