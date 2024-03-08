@@ -61,9 +61,14 @@ jobs:
         run: poetry run pyinstaller selfie.spec --noconfirm
         shell: bash
 
+      - name: Archive Build Output
+        run: |
+          cd dist
+          tar -czvf selfie-build.tar.gz *
+        shell: bash
+
       - name: Upload Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.os }}-build
-          path: |
-            dist/*
+          path: dist/selfie-build.tar.gz
