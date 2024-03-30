@@ -6,7 +6,7 @@ from selfie.database import BaseModel
 from selfie.embeddings import EmbeddingDocumentModel, DataIndex
 from selfie.parsers.chat import ChatFileParser
 from selfie.types.documents import DocumentDTO
-from selfie.utils import data_uri_to_dict
+from selfie.utils.data_structures import data_uri_to_dict
 
 
 class WhatsAppConfiguration(BaseModel):
@@ -16,7 +16,7 @@ class WhatsAppConfiguration(BaseModel):
 class WhatsAppConnector(BaseConnector, ABC):
     def __init__(self):
         super().__init__()
-        self.id = "whatsapp"
+        self.id = "whatsapp"  # TODO: this should be static
         self.name = "WhatsApp"
 
     def load_document(self, configuration: dict[str, Any]) -> List[DocumentDTO]:
