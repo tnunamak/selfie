@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.2.0](https://github.com/tnunamak/selfie/compare/v0.1.0...v0.2.0) (2024-03-30)
+
+
+### Features
+
+* add --gpu flag ([#3](https://github.com/tnunamak/selfie/issues/3)) ([9910ba7](https://github.com/tnunamak/selfie/commit/9910ba7dc6afd48e3ff99543f5afb8fe926ebd86))
+* add a European WhatsApp date format and support ngrok domains ([#5](https://github.com/tnunamak/selfie/issues/5)) ([49a6100](https://github.com/tnunamak/selfie/commit/49a61000ff5d1f81bd255ef4d3ebf4ffeaa3cf04))
+* finish ChatGPT connector ([#15](https://github.com/tnunamak/selfie/issues/15)) ([69f2355](https://github.com/tnunamak/selfie/commit/69f235503aac5d79ee57c1ff3833f79f50faaa4c))
+* improved data model and UI ([#10](https://github.com/tnunamak/selfie/issues/10)) ([7cf9a98](https://github.com/tnunamak/selfie/commit/7cf9a9839ccb8980eca5b500141c036935073e64))
+* macOS executable ([ec10c92](https://github.com/tnunamak/selfie/commit/ec10c924b637199ed52b6e0fd57d3eda1370b34a))
+* Manage Data page ([#22](https://github.com/tnunamak/selfie/issues/22)) ([4bc26b6](https://github.com/tnunamak/selfie/commit/4bc26b65f4ceb42f1b075daec1b72c1c78466dfc))
+* Refactor GET /documents to return minimal fields ([#21](https://github.com/tnunamak/selfie/issues/21)) ([db81e61](https://github.com/tnunamak/selfie/commit/db81e612267655b9af02e49714ba488f555cb577))
+* Show loading indicator when searching for documents ([#19](https://github.com/tnunamak/selfie/issues/19)) ([c9d3913](https://github.com/tnunamak/selfie/commit/c9d39137848e180109ee14d6aa435444cfc6dcd5))
+* support files exceeding browser data URI limits ([#16](https://github.com/tnunamak/selfie/issues/16)) ([6a64586](https://github.com/tnunamak/selfie/commit/6a64586ad845fd8dfa775683d29e91b46bc4b41b))
+* Telegram and Text Files connectors ([#20](https://github.com/tnunamak/selfie/issues/20)) ([02cc326](https://github.com/tnunamak/selfie/commit/02cc3266ab0319fe92be522aff9e649715a35d73))
+
+
+### Bug Fixes
+
+* deleting documents ([cee0022](https://github.com/tnunamak/selfie/commit/cee0022793fdd56ccb06a4bd371e2f0bd7b808e0))
+* embeddings that are too large ([313a2df](https://github.com/tnunamak/selfie/commit/313a2df6a782f34f47d24b0c14fb2e9f754368cf))
+* new WhatsApp format, dependency errors, UI improvements ([#1](https://github.com/tnunamak/selfie/issues/1)) ([b67e497](https://github.com/tnunamak/selfie/commit/b67e497c6a977b48ba37471deb58763aa797632d))
+* parse old ChatGPT conversations ([#18](https://github.com/tnunamak/selfie/issues/18)) ([ce8df83](https://github.com/tnunamak/selfie/commit/ce8df836ca7a99a4f34bff70c48a4208921ca8ec))
+* pyinstaller instructions ([246ef06](https://github.com/tnunamak/selfie/commit/246ef0613be0c5f0203bdf84fd264b398f4f1c52))
+* require python 3.11 to avoid segfault ([#6](https://github.com/tnunamak/selfie/issues/6)) ([1945f58](https://github.com/tnunamak/selfie/commit/1945f583d6b3f5533ba07ff0dfd2265a8b6132c2))
+* start.sh fails in some environments ([#24](https://github.com/tnunamak/selfie/issues/24)) ([e979c71](https://github.com/tnunamak/selfie/commit/e979c71eb6c7f576105b0028faeb501005b36369))
+* use a default model that works OOTB with latest llama.cpp ([#4](https://github.com/tnunamak/selfie/issues/4)) ([831d261](https://github.com/tnunamak/selfie/commit/831d261a935c390960bb03eff632e4a8cac1f298))
+* use correct API endpoints in UI development mode ([#7](https://github.com/tnunamak/selfie/issues/7)) ([b44a860](https://github.com/tnunamak/selfie/commit/b44a860ea6ae808b0231c3feda72329ac63c614e))
+
+
+### Documentation
+
+* clarify Add Directory ([#9](https://github.com/tnunamak/selfie/issues/9)) ([12cf251](https://github.com/tnunamak/selfie/commit/12cf251859cbec0d8ea8580e2f81864203328805))
+* poetry install instructions  ([#8](https://github.com/tnunamak/selfie/issues/8)) ([10b16f0](https://github.com/tnunamak/selfie/commit/10b16f00d7f98286ac9c8ccc52b579802fbcd7ce))
+
 ## 0.1.0 (2024-03-30)
 
 
